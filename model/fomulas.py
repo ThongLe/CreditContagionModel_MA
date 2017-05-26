@@ -1,8 +1,10 @@
 import random
 import numpy as np
 
-def repay_amount():
-    amount = 0
+# s(st_ratio)
+# b(borrowing_amount)
+def repay_amount(s = 0, b = 0):
+    amount = b * np.dot([s, 1 - s], [np.random.uniform(0.95, 1), np.random.uniform(0.2, 1)])
     return amount
 
 def size_score():
