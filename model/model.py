@@ -14,7 +14,7 @@ class CreditContagionModel(Model):
     initial_bank = 100
 
     ### To do
-    def __init__(self, initial_bank = 100):
+    def __init__(self, initial_bank=100):
         self.name = "Credit Contagion Model"
 
         # Set parameters
@@ -32,7 +32,9 @@ class CreditContagionModel(Model):
 
 
     def step(self):
-        self.schedule.step()
+        stages = [1, 2, 3]
+        for stage in stages:
+            self.schedule.step(stage, cycle_stage=stages.__len__())
         self.datacollector.collect(self)
         if self.verbose:
             print([self.schedule.time,
@@ -40,6 +42,7 @@ class CreditContagionModel(Model):
 
     def run_model(self, step_count=200):
         if self.verbose:
+            print('Project Name: ' + self.name)
             print('Initial number banks: ',
                   self.schedule.get_breed_count(Bank))
 

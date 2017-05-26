@@ -7,11 +7,14 @@ class Bank(Agent):
         self.code = params['code'] if 'code' in params else ''
         self.name = params['name'] if 'name' in params else ''
 
-    def step(self):
+    def step(self, stage):
         """ A single step of the agent. """
-        self.stage_1()
-        self.stage_2()
-        self.stage_3()
+        if stage in [1, 2, 3]:
+            return {
+                1 : self.stage_1,
+                2 : self.stage_2,
+                3 : self.stage_3
+            }[stage]()
 
     def pay(self):
         print "pay"

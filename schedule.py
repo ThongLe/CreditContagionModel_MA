@@ -44,23 +44,17 @@ class RandomActivationByBreed(RandomActivation):
         while agent in self.agents_by_breed[agent_class]:
             self.agents_by_breed[agent_class].remove(agent)
 
-    def step(self, by_breed=True):
+    def step(self, stage, cycle_stage):
         '''
         Executes the step of each agent breed, one at a time, in random order.
-
-        Args:
-            by_breed: If True, run all agents of a single breed before running
-                      the next one.
         '''
-        if by_breed:
-            for agent_class in self.agents_by_breed:
-                self.step_breed(agent_class)
+        for agent_class in self.agents_by_breed:
+            self.step_breed(agent_class, stage)
+        if stage % cycle_stage == 0:
             self.steps += 1
             self.time += 1
-        else:
-            RandomActivationByBreed(self).step()
 
-    def step_breed(self, breed):
+    def step_breed(self, breed, stage):
         '''
         Shuffle order and run all agents of a given breed.
 
@@ -70,7 +64,7 @@ class RandomActivationByBreed(RandomActivation):
         agents = self.agents_by_breed[breed]
         random.shuffle(agents)
         for agent in agents:
-            agent.step()
+            agent.step(stage)
 
     def get_breed_count(self, breed_class):
         '''
