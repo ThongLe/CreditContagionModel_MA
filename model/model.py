@@ -23,7 +23,7 @@ class CreditContagionModel(Model):
 
         self.schedule = RandomActivationByBreed(self)
 
-        self.datacollector = DataCollector({ "Banks": lambda m: m.schedule.get_breed_count(Bank)})
+        self.data_collector = self.create_data_collector()
 
         # Create sheep:
         for i in range(self.initial_bank):
@@ -35,7 +35,7 @@ class CreditContagionModel(Model):
         stages = [1, 2, 3]
         for stage in stages:
             self.schedule.step(stage, cycle_stage=stages.__len__())
-        self.datacollector.collect(self)
+        self.data_collector.collect(self)
         if self.verbose:
             print([self.schedule.time,
                    self.schedule.get_breed_count(Bank)])
@@ -53,3 +53,12 @@ class CreditContagionModel(Model):
             print('')
             print('Final number banks: ',
                   self.schedule.get_breed_count(Bank))
+
+    def create_data_collector(self):
+        model_reporters = {
+            "Banks": lambda m: m.schedule.get_breed_count(Bank)
+        }
+        agent_reporters = {
+            "Test": lambda bank: 0
+        }
+        return DataCollector(model_reporters, agent_reporters)

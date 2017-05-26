@@ -7,6 +7,7 @@ class Bank(Agent):
     def __init__(self, params):
         self.code = params['code'] if 'code' in params else ''
         self.name = params['name'] if 'name' in params else ''
+        self.unique_id = self.name + "(" + str(self.code) + ")"
 
     def step(self, stage, banks):
         """ A single step of the agent. """
