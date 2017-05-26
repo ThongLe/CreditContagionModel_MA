@@ -4,6 +4,7 @@ from mesa import Agent
 
 class Bank(Agent):
     def __init__(self, params):
+        self.code = params['code'] if 'code' in params else ''
         self.name = params['name'] if 'name' in params else ''
 
     def step(self):
@@ -40,16 +41,16 @@ class Bank(Agent):
         '''
         A model step. At stage 1, borrowing banks repay part of their loan to lending banks
         '''
-        print "stage_1"
+        print 'Code: ' + str(self.code) + " - Name: " + self.name + " --> Run " + "stage_1"
 
     def stage_2(self):
         '''
         At stage 2, banks borrow and lend in the interbank market
         '''
-        print "stage_2"
+        print 'Code: ' + str(self.code) + " - Name: " + self.name + " --> Run " + "stage_2"
 
     def stage_3(self):
         '''
         At stage 3, banks update other entries of the balance sheet
         '''
-        print "stage_3"
+        print 'Code: ' + str(self.code) + " - Name: " + self.name + " --> Run " + "stage_3"
