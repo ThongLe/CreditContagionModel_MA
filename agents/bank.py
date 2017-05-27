@@ -2,7 +2,6 @@ import numpy as np
 
 from mesa import Agent
 import model.fomulas as fl
-from data.banks import SHORT_TERM_DEBT_RATIO
 
 class Bank(Agent):
     def __init__(self, params):
@@ -10,10 +9,17 @@ class Bank(Agent):
         self.name = params.get("name", "")
         self.unique_id = self.name + "(" + str(self.code) + ")"
 
-        self.short_term_debt = params.get("short_term_debt", {})
-        self.debts = params.get("debts", {})
+        # Liabilities
+        self.repayment_amount = params.get("repayment_amount", {})
+        self.short_term_debt_ratio = params.get("short_term_debt_ratio", 0)
+        self.borrowings = params.get("borrowings", {})
+        self.equity = params.get("equity", 0)
+        self.deposit = params.get("deposit", 0)
+
+        # Assets
         self.cash = params.get("cash", 0)
-        self.loans = params.get("loans", {})
+        self.lendings = params.get("lendings", {})
+        self.external_asset = params.get("external_asset", {})
         self.is_bankrupt = False
 
     def step(self, stage, banks):
@@ -28,35 +34,43 @@ class Bank(Agent):
     def is_available(self):
         return self.is_bankrupt
 
-    def long_term_debt(self):
-        return {bank_code: self.debts[bank_code] - self.short_term_debt[bank_code] for bank_code in self.debts.keys()}
+    def total_borrowings(self):
+        return sum(self.borrowings.values())
 
-    def total_debt(self):
-        return sum(self.debts.values())
+    def total_lendings(self):
+        return sum(self.lendings.values())
 
-    def total_loan(self):
-        return sum(self.loans.values())
+    def total_asset(self):
+        return self.cash + self.total_lendings() + self.external_asset
+
+    def total_liability(self):
+        return self.deposit + self.total_borrowings() + self.equity
+
+    def check_balance_sheet_problem(self):
+        return self.total_asset() == self.total_liability()
+
+    def update_short_term_debt_ratio(self):
+        # To do
+        self.short_term_debt_ratio = 0
 
     def pay(self, bank, amount):
         self.cash -= amount
-        self.short_term_debt[bank.code] -= amount
-        self.debts[bank.code] -= amount
+        self.borrowings[bank.code] -= amount
         print "---> " + 'Code: ' + str(self.code) + " - Name: " + self.name + " : " + "paid" + " " + str(amount)
 
     def receive(self, bank, amount):
         self.cash += amount
-        self.loans[bank.code] -= amount
+        self.lendings[bank.code] -= amount
         print "---> " + 'Code: ' + str(self.code) + " - Name: " + self.name + " : " + "received" + " " + str(amount)
 
     def lend(self, bank, amount):
         self.cash -= amount
-        self.loans[bank.code] += amount
+        self.lendings[bank.code] += amount
         print "---> " + 'Code: ' + str(self.code) + " - Name: " + self.name + " : " + "lend" + " " + str(amount)
 
     def borrow(self, bank, amount):
         self.cash += amount
-        self.short_term_debt[bank.code] += amount
-        self.debts[bank.code] += amount
+        self.borrowings[bank.code] += amount
         print "---> " + 'Code: ' + str(self.code) + " - Name: " + self.name + " : " + "borrowed" + " " + str(amount)
 
     def change_deposit(self):
@@ -78,8 +92,8 @@ class Bank(Agent):
         '''
 
         for bank in banks:
-            if (bank.code != self.code) and (self.short_term_debt[bank.code] > 0):
-                amount = fl.repay_amount(s=SHORT_TERM_DEBT_RATIO, b=self.short_term_debt[bank.code])
+            if (bank.code != self.code) and (self.borrowings[bank.code] > 0):
+                amount = self.repayment_amount[bank.code].pop(0)
                 if self.cash < amount:
                     self.bankrupt()
                     break
