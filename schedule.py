@@ -64,7 +64,8 @@ class RandomActivationByBreed(RandomActivation):
         agents = self.agents_by_breed[breed]
         random.shuffle(agents)
         for agent in agents:
-            agent.step(stage, agents)
+            if agent.is_available():
+                agent.step(stage, agents)
 
     def get_breed_count(self, breed_class):
         '''
