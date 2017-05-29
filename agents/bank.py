@@ -35,6 +35,11 @@ class Bank(Agent):
         self.growth_rate = params.get("equity_growth_rate", {"deposit": {"mean": 0.1, "var": 0.2},
                                                              "external_asset": {"mean": 0.1, "var": 0.2},
                                                              "equity": {"mean": 0.1, "var": 0.2}})
+        self.borrowing_rate = params.get("borrowing_rate", 0.2)
+        self.lending_rate = params.get("lending_rate", 0.2)
+
+        self.borrowing_target_amount = 0
+        self.lending_target_amount = 0
 
     def step(self, stage, banks):
         """ A single step of the agent. """
@@ -87,14 +92,15 @@ class Bank(Agent):
 
     def update_deposit(self):
         self.deposit *= math.exp(self.deposit_growth_rate())
-        print "change_deposit"
+        print "updated_deposit"
 
     def update_external_asset(self):
         self.external_asset *= math.exp(self.external_asset_growth_rate())
-        print "change_external_asset"
+        print "updated_external_asset"
 
     def update_equity(self):
-        print "change_equity"
+        self.equity *= (1 + self.equity_growth_rate())
+        print "updated_equity"
 
     def bankrupt(self):
         self.bankrupted = True
@@ -104,19 +110,10 @@ class Bank(Agent):
         '''
         A model step. At stage 1, borrowing banks repay part of their loan to lending banks
         '''
-
-        for bank in banks:
-            if self.borrowings.get(bank, 0) > 0:
-                amount = self.scheduled_repayment_amount[bank].pop(0)
-                if self.cash < amount:
-                    self.bankrupt()
-                    break
-                self.pay(bank, amount)
-                bank.receive(self, amount)
-
         self.update_deposit()
+        self.update_borrowing_target_amount()
+        self.update_lending_target_amount()
         self.update_external_asset()
-
         print 'Code: ' + str(self.code) + " - Name: " + self.name + " --> Run " + "stage_1"
 
     def stage_2(self, banks):
@@ -128,7 +125,6 @@ class Bank(Agent):
         self.size_score = {bank: fl.size_score(bank.total_asset(), bank_assets, indicators) for bank in banks}
 
         if self.need_a_loan():
-            borrow_target_amount = self.calculate_borrow_target_amount()
             borrowed_amount = 0
             term = 1 if self.need_short_term_loan() else 4
 
@@ -144,12 +140,12 @@ class Bank(Agent):
                 bank = bank_score.keys()[0]
                 if bank.is_available_for_lendings():
                     real_borrowing_amount, scheduling_repayment = self.ask_for_a_loan(
-                        bank, borrow_target_amount - borrowed_amount, term)
+                        bank, self.borrowing_target_amount - borrowed_amount, term)
                     if real_borrowing_amount > 0:
                         self.borrow(bank, real_borrowing_amount, scheduling_repayment)
                         bank.lend(self, real_borrowing_amount)
                         borrowed_amount += real_borrowing_amount
-                        if borrow_target_amount - borrowed_amount == 0:
+                        if self.borrowing_target_amount - borrowed_amount == 0:
                             break
 
             # relation_score
@@ -163,6 +159,16 @@ class Bank(Agent):
         At stage 3, banks update other entries of the balance sheet
         '''
         self.update_equity()
+
+        for bank in banks:
+            if self.borrowings.get(bank, 0) > 0:
+                amount = self.scheduled_repayment_amount[bank].pop(0)
+                if self.cash < amount:
+                    self.bankrupt()
+                    break
+                self.pay(bank, amount)
+                bank.receive(self, amount)
+
         print 'Code: ' + str(self.code) + " - Name: " + self.name + " --> Run " + "stage_3"
 
     # ===================================================================
@@ -171,14 +177,14 @@ class Bank(Agent):
         return self.bankrupted
 
     def is_available_for_lendings(self):
-        return True
+        return max(self.lending_target_amount * self.lending_rate - self.total_lendings(), 0) > 0
 
     def update_short_term_debt_ratio(self):
         # To do
         self.short_term_debt_ratio = 0
 
     def ask_for_a_loan(self, bank, borrow_amount_target, term):
-        available_amount = 0
+        available_amount = bank.available_lending_amount()
         offer_amount = min(borrow_amount_target, available_amount)
         scheduling_repayment = [offer_amount / term for _ in range(term)] if offer_amount > 0 else []
         return offer_amount, scheduling_repayment
@@ -189,8 +195,14 @@ class Bank(Agent):
     def need_short_term_loan(self):
         return True if np.random.uniform(0, 1) < 0 else False
 
-    def calculate_borrow_target_amount(self):
-        return 0
+    def update_borrowing_target_amount(self):
+        self.borrowing_target_amount = max(self.borrowing_rate / (1 - self.borrowing_rate) * (self.deposit + self.equity) - self.total_borrowings(), 0)
+
+    def update_lending_target_amount(self):
+        self.lending_target_amount = max(self.total_asset() * self.borrowing_rate - self.total_lendings(), 0)
+
+    def available_lending_amount(self):
+        return self.lending_target_amount * self.lending_rate
 
     def other_agents(self, banks):
         return [bank for bank in banks if (self.unique_id != bank.unique_id) and (bank.is_available())]
