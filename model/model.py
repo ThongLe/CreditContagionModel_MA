@@ -26,12 +26,17 @@ class CreditContagionModel(Model):
         self.data_collector = self.create_data_collector()
 
         # Create sheep:
+        agents = []
         for i in range(self.initial_bank):
             params[i]["lendings"] = lending_borrowing_matrix[params[i]["code"]]
             params[i]["borrowings"] = { bank: lending_borrowing_matrix[bank][params[i]["code"]] for bank in lending_borrowing_matrix }
-            bank = Bank(params[i])
-            self.schedule.add(bank)
+            agent = Bank(params[i])
+            agents.append(agent)
 
+        for agent in agents:
+            other_agents = agent.other_agents(agents)
+            agent.init_scores(other_agents)
+            self.schedule.add(agent)
 
     def step(self):
         stages = [1, 2, 3]

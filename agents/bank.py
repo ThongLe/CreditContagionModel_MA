@@ -36,13 +36,14 @@ class Bank(Agent):
         self.borrowing_target_rate = params.get("borrowing_target_rate", 0)
         self.lending_target_rate = params.get("lending_target_rate", 0)
 
+        self.relation_indicators = {bank_code: 1 if self.lendings[bank_code] > 0 else 0 for bank_code in self.lendings}
         # ======
 
         self.borrowing_target_amount = 0
         self.lending_target_amount = 0
         self.bankrupted = False
 
-        self.relation_score = fl.relation_score(0, self.total_borrowings())
+        self.relation_score = {}
         self.size_score = {}
         self.total_score = {}
 
@@ -128,9 +129,8 @@ class Bank(Agent):
         '''
         At stage 2, banks borrow and lend in the interbank market
         '''
-        bank_assets = [_.total_asset() for _ in banks]
-        indicators = []
-        self.size_score = {bank: fl.size_score(bank.total_asset(), bank_assets, indicators) for bank in banks}
+        self.update_size_score(banks)
+        self.update_total_score(banks)
 
         if self.need_a_loan():
             borrowed_amount = 0
@@ -138,12 +138,7 @@ class Bank(Agent):
 
             # 2.2. Ask for loan
 
-            total_score = []
-            for bank in banks:
-                score = fl.total_score(weight=TOTAL_SCORE_WEIGHT, score=[self.relation_score[bank], self.size_score[bank]])
-                total_score.append({bank: score})
-                self.total_score[bank] = score
-
+            total_score = [{bank: self.total_score[bank]} for bank in banks]
             bank_priority = sorted(total_score) # [{bank: 0.5}, ...] desc
 
             for bank_score in bank_priority:
@@ -159,9 +154,7 @@ class Bank(Agent):
                             if self.borrowing_target_amount - borrowed_amount == 0:
                                 break
 
-            # relation_score
-            for bank in banks:
-                self.relation_score[bank] = fl.relation_score(self.relation_score[bank], borrowed_amount)
+            self.update_relation_score(banks, borrowed_amount)
 
         print 'Code: ' + str(self.code) + " - Name: " + self.name + " --> Run " + "stage_2"
 
@@ -214,6 +207,11 @@ class Bank(Agent):
             long_term_payment_amount = (1 - self.short_term_borrowing_rate) * total_borrowing_amount
             scheduled_repayment_amount[bank_code] = [0] + [short_term_payment_amount + float(long_term_payment_amount) / term] + [float(long_term_payment_amount) / term] * (term - 1)
 
+    def init_scores(self, banks):
+        self.update_relation_score(banks)
+        self.update_size_score(banks)
+        self.update_total_score(banks)
+
     def need_a_loan(self):
         return True if np.random.uniform(0, 1) < 0 else False
 
@@ -242,6 +240,21 @@ class Bank(Agent):
                 self.scheduled_repayment_amount[bank] += [0 for _ in range(add_term)]
 
         self.scheduled_repayment_amount[bank] = [x + y for x, y in zip(self.scheduled_repayment_amount[bank], scheduled_payment)]
+
+    def update_relation_score(self, banks, borrowed_amount=None):
+        if borrowed_amount is None:
+            self.relation_score = {fl.relation_score(0, self.total_borrowings()) for bank in banks if self.relation_indicators[bank.code] == 1}
+        else:
+            self.relation_score = {fl.relation_score(self.relation_score[bank], borrowed_amount) for bank in banks}
+
+    def update_size_score(self, banks):
+        bank_assets = [_.total_asset() for _ in banks]
+        self.size_score = {bank: fl.size_score(bank.total_asset(), bank_assets, self.relation_indicators) for bank in banks}
+
+    def update_total_score(self, banks):
+        for bank in banks:
+            score = fl.total_score(weight=TOTAL_SCORE_WEIGHT, score=[self.relation_score[bank], self.size_score[bank]])
+            self.total_score[bank] = score
 
     def deposit_growth_rate(self):
         return np.random.normal(self.growth_rate["deposit"]["mean"], self.growth_rate["deposit"]["var"])
