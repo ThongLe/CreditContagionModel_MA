@@ -1,6 +1,6 @@
-import random
 import numpy as np
 import math
+from data.contanst import *
 
 # Aj  : asset of Bank j
 # A   : asset of all Bank but j
@@ -24,10 +24,6 @@ def total_score(weight, score):
     score = np.dot(weight, score)
     return score
 
-def lending_decision():
-    p = 0
+def lending_decision(score):
+    p = 1.0 / (1 + ALPHA * math.exp(BETA * score))
     return p
-
-def lending_amount():
-    amount = 0
-    return amount

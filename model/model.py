@@ -6,7 +6,7 @@ from mesa.datacollection import DataCollector
 
 from agents.bank import Bank
 
-from data.banks import params
+from data.banks import params, lending_borrowing_matrix
 from schedule import RandomActivationByBreed
 
 class CreditContagionModel(Model):
@@ -27,6 +27,8 @@ class CreditContagionModel(Model):
 
         # Create sheep:
         for i in range(self.initial_bank):
+            params[i]["lendings"] = lending_borrowing_matrix[params[i]["code"]]
+            params[i]["borrowings"] = { bank: lending_borrowing_matrix[bank][params[i]["code"]] for bank in lending_borrowing_matrix }
             bank = Bank(params[i])
             self.schedule.add(bank)
 

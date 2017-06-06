@@ -3,28 +3,44 @@ import numpy as np
 from mesa import Agent
 import model.fomulas as fl
 import math
+from data.contanst import *
 
 class Bank(Agent):
     def __init__(self, params):
         self.code = params.get("code", "")
-        self.name = params.get("name", "")
-        self.unique_id = self.name + "(" + str(self.code) + ")"
+        self.unique_id = self.code
+
+        self.term = LOAN_TERM
 
         # Liabilities
-        self.scheduled_repayment_amount = params.get("scheduled_repayment_amount", {})
-        self.short_term_debt_ratio = params.get("short_term_debt_ratio", 0)
-        self.borrowings = params.get("borrowings", {})
-        self.equity = params.get("equity", 0)
-        self.deposit = params.get("deposit", 0)
+        liability = params.get("liability", {})
+        self.equity = liability.get("equity", 0)
+        self.deposit = liability.get("deposit", 0)
+        self.borrowings = params.get("borrowings", {}) # self.total_borrowings() == liability["total"] - self.equity - self.deposit
 
         # Assets
-        self.cash = params.get("cash", 0)
-        self.lendings = params.get("lendings", {})
-        self.external_asset = params.get("external_asset", 0)
-        self.bankrupted = False
+        asset = params.get("asset", {})
+        self.cash = asset.get("cash", 0)
+        self.external_asset = asset.get("external_asset", 0)
+        self.lendings = params.get("lendings", {})   # self.total_lendings() == asset["total"] - self.cash - self.external_asset
+
+        self.scheduled_repayment_amount = self.init_scheduled_payment(self.term)
+
+        self.short_term_lending_rate = params.get("short_term_lending_rate", 0)
+        self.short_term__rate = params.get("short_term_borrowing_rate", 0)
+
+        self.growth_rate = params.get("growth_rate", {"deposit":        {"mean": 0, "var": 0},
+                                                      "external_asset": {"mean": 0, "var": 0},
+                                                      "equity":         {"mean": 0, "var": 0}})
+
+        self.borrowing_target_rate = params.get("borrowing_target_rate", 0)
+        self.lending_target_rate = params.get("lending_target_rate", 0)
 
         # ======
-        self.equity_growth_rate = params.get("equity_growth_rate", 0.2)
+
+        self.borrowing_target_amount = 0
+        self.lending_target_amount = 0
+        self.bankrupted = False
 
         self.relation_score = fl.relation_score(0, self.total_borrowings())
         self.size_score = {}
@@ -32,14 +48,6 @@ class Bank(Agent):
 
         self.alpha = 0
         self.beta = 0
-        self.growth_rate = params.get("equity_growth_rate", {"deposit": {"mean": 0.1, "var": 0.2},
-                                                             "external_asset": {"mean": 0.1, "var": 0.2},
-                                                             "equity": {"mean": 0.1, "var": 0.2}})
-        self.borrowing_rate = params.get("borrowing_rate", 0.2)
-        self.lending_rate = params.get("lending_rate", 0.2)
-
-        self.borrowing_target_amount = 0
-        self.lending_target_amount = 0
 
     def step(self, stage, banks):
         """ A single step of the agent. """
@@ -126,27 +134,30 @@ class Bank(Agent):
 
         if self.need_a_loan():
             borrowed_amount = 0
-            term = 1 if self.need_short_term_loan() else 4
+            term = 1 if self.need_short_term_loan() else self.term
 
             # 2.2. Ask for loan
 
-            self.total_score = []
+            total_score = []
             for bank in banks:
-                self.total_score.append({bank: fl.total_score(weight=[0.3, 0.7], score=[self.relation_score[bank], self.size_score[bank]])})
+                score = fl.total_score(weight=TOTAL_SCORE_WEIGHT, score=[self.relation_score[bank], self.size_score[bank]])
+                total_score.append({bank: score})
+                self.total_score[bank] = score
 
-            bank_priority = sorted(self.total_score) # [{bank: 0.5}, ...]
+            bank_priority = sorted(total_score) # [{bank: 0.5}, ...] desc
 
             for bank_score in bank_priority:
                 bank = bank_score.keys()[0]
                 if bank.is_available_for_lendings():
-                    real_borrowing_amount, scheduling_repayment = self.ask_for_a_loan(
-                        bank, self.borrowing_target_amount - borrowed_amount, term)
-                    if real_borrowing_amount > 0:
-                        self.borrow(bank, real_borrowing_amount, scheduling_repayment)
-                        bank.lend(self, real_borrowing_amount)
-                        borrowed_amount += real_borrowing_amount
-                        if self.borrowing_target_amount - borrowed_amount == 0:
-                            break
+                    if bank.can_give_a_loan_to(self):
+                        real_borrowing_amount, scheduling_repayment = self.ask_for_a_loan(
+                            bank, self.borrowing_target_amount - borrowed_amount, term)
+                        if real_borrowing_amount > 0:
+                            self.borrow(bank, real_borrowing_amount, scheduling_repayment)
+                            bank.lend(self, real_borrowing_amount)
+                            borrowed_amount += real_borrowing_amount
+                            if self.borrowing_target_amount - borrowed_amount == 0:
+                                break
 
             # relation_score
             for bank in banks:
@@ -177,17 +188,31 @@ class Bank(Agent):
         return self.bankrupted
 
     def is_available_for_lendings(self):
-        return max(self.lending_target_amount * self.lending_rate - self.total_lendings(), 0) > 0
+        return max(self.lending_target_amount * self.lending_target_rate - self.total_lendings(), 0) > 0
 
-    def update_short_term_debt_ratio(self):
-        # To do
-        self.short_term_debt_ratio = 0
+    def can_give_a_loan_to(self, bank):
+        probability = fl.lending_decision(self.total_score[bank])
+        return True if np.random.choice(2, 1, p=[1 - probability, probability])[0] == 1 else False
+
+    def update_short_term_lending_rate(self):
+        self.short_term_lending_rate = self.short_term_lending_rate
+
+    def update_short_term_borrowing_rate(self):
+        self.short_term_borrowing_rate = self.short_term_borrowing_rate
 
     def ask_for_a_loan(self, bank, borrow_amount_target, term):
         available_amount = bank.available_lending_amount()
         offer_amount = min(borrow_amount_target, available_amount)
         scheduling_repayment = [offer_amount / term for _ in range(term)] if offer_amount > 0 else []
         return offer_amount, scheduling_repayment
+
+    def init_scheduled_payment(self, term):
+        scheduled_repayment_amount = {}
+        for bank_code in self.borrowings:
+            total_borrowing_amount = self.borrowings[bank_code]
+            short_term_payment_amount = self.short_term_borrowing_rate * total_borrowing_amount
+            long_term_payment_amount = (1 - self.short_term_borrowing_rate) * total_borrowing_amount
+            scheduled_repayment_amount[bank_code] = [0] + [short_term_payment_amount + float(long_term_payment_amount) / term] + [float(long_term_payment_amount) / term] * (term - 1)
 
     def need_a_loan(self):
         return True if np.random.uniform(0, 1) < 0 else False
@@ -196,13 +221,13 @@ class Bank(Agent):
         return True if np.random.uniform(0, 1) < 0 else False
 
     def update_borrowing_target_amount(self):
-        self.borrowing_target_amount = max(self.borrowing_rate / (1 - self.borrowing_rate) * (self.deposit + self.equity) - self.total_borrowings(), 0)
+        self.borrowing_target_amount = max(self.borrowing_target_rate / (1 - self.borrowing_target_rate) * (self.deposit + self.equity) - self.total_borrowings(), 0)
 
     def update_lending_target_amount(self):
-        self.lending_target_amount = max(self.total_asset() * self.borrowing_rate - self.total_lendings(), 0)
+        self.lending_target_amount = max(self.total_asset() * self.borrowing_target_rate - self.total_lendings(), 0)
 
     def available_lending_amount(self):
-        return self.lending_target_amount * self.lending_rate
+        return self.lending_target_amount * self.lending_target_rate
 
     def other_agents(self, banks):
         return [bank for bank in banks if (self.unique_id != bank.unique_id) and (bank.is_available())]
