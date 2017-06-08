@@ -117,7 +117,23 @@ class Bank(Agent):
     def bankrupting(self, banks):
         self.bankrupted = True
         recover_rate = self.recover_rate()
-        self.sell_asset(recover_rate)
+        self.sell_asset(banks, recover_rate)
+
+        total_debt = self.deposit + self.total_borrowings()
+        total_cash = self.cash
+
+        self.cash -= total_cash * self.deposit / total_debt
+        self.deposit = 0
+
+        for bank in banks:
+            if self.borrowings[bank.code] > 0:
+                repay = total_cash * self.borrowings[bank.code] / total_debt
+                self.pay(bank, repay)
+                self.borrowings[bank.code] = 0
+                self.scheduled_repayment_amount[bank.code] = []
+                bank.receive(self, repay)
+                bank.lendings[self.code] = 0
+
         print "bankrupted"
 
     def stage_1(self, banks):
@@ -127,9 +143,8 @@ class Bank(Agent):
         self.update_borrowing_target_amount()
         self.update_lending_target_amount()
 
-        self.update_deposit() if not self.is_bankrupted() else None
-        self.update_external_asset() if not self.is_bankrupted() else None
-        self.bankrupting(banks) if self.is_bankrupted() else None
+        self.update_deposit() if not self.is_bankrupted() else self.bankrupting(banks)
+        self.update_external_asset() if not self.is_bankrupted() else self.bankrupting(banks)
 
         print 'Code: ' + str(self.code) + " - Name: " + self.name + " --> Run " + "stage_1"
 
@@ -175,12 +190,13 @@ class Bank(Agent):
         for bank in banks:
             if self.borrowings.get(bank, 0) > 0:
                 repay_amount = self.scheduled_repayment_amount[bank].pop(0)
-                self.pay(bank, repay_amount)
-                bank.receive(self, repay_amount)
-                if self.is_bankrupted():
+                if self.cash < repay_amount:
+                    self.scheduled_repayment_amount[bank] = [repay_amount] + self.scheduled_repayment_amount[bank]
                     self.bankrupting(banks)
                     break
-
+                else:
+                    self.pay(bank, repay_amount)
+                    bank.receive(self, repay_amount)
 
         print 'Code: ' + str(self.code) + " - Name: " + self.name + " --> Run " + "stage_3"
 
@@ -190,6 +206,8 @@ class Bank(Agent):
         return self.bankrupted
 
     def is_bankrupted(self):
+        if self.bankrupted:
+            return True
         # In case equity < 0
         if self.total_asset() < self.deposit + self.total_borrowings():
             return True
@@ -287,9 +305,28 @@ class Bank(Agent):
     def equity_growth_rate(self):
         return np.random.normal(self.growth_rate["equity"]["mean"], self.growth_rate["equity"]["var"])
 
-    def sell_asset(self, recover_rate):
-        cash = recover_rate * (self.total_lendings() + self.external_asset)
-        self.cash += cash
+    def sell_external_asset(self):
+        cash = self.external_asset
         self.external_asset = 0
-        banks = self.lendings.keys()
-        self.lendings = {bank: 0 for bank in banks}
+        return cash
+
+    def sell_asset(self, banks, recover_rate):
+        cash = recover_rate * self.sell_external_asset()
+        self.cash += cash
+        for bank in banks:
+            if not bank.is_bankrupted() and self.lendings[bank.code] > 0:
+                debt = recover_rate * self.lendings[bank.code]
+                bank.bankrupting(banks) if bank.cash < debt else None
+                repay_debt = min(bank.cash, debt)
+                bank.cash -= repay_debt
+                self.cash += repay_debt
+                bank.borrowings[self.code] = self.lendings[bank.code] = 0
+                bank.scheduled_repayment_amount[self.code] = []
+
+    def buy_debt(self, bank, debt):
+        if self.cash >= debt:
+            self.cash -= debt
+            bank.lendings[self.code] = 0
+        else:
+            banks = self.lendings.keys()
+            self.bankrupting(banks)
