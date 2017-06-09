@@ -126,7 +126,7 @@ class Bank(Agent):
         self.deposit = 0
 
         for bank in banks:
-            if self.borrowings[bank.code] > 0:
+            if self.borrowings[bank.code] > 0 and not bank.is_bankrupted:
                 repay = total_cash * self.borrowings[bank.code] / total_debt
                 self.pay(bank, repay)
                 self.borrowings[bank.code] = 0
@@ -322,11 +322,3 @@ class Bank(Agent):
                 self.cash += repay_debt
                 bank.borrowings[self.code] = self.lendings[bank.code] = 0
                 bank.scheduled_repayment_amount[self.code] = []
-
-    def buy_debt(self, bank, debt):
-        if self.cash >= debt:
-            self.cash -= debt
-            bank.lendings[self.code] = 0
-        else:
-            banks = self.lendings.keys()
-            self.bankrupting(banks)
