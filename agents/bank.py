@@ -53,6 +53,8 @@ class Bank(Agent):
         self.alpha = 0
         self.beta = 0
 
+        self.bankrupting_processor = params.get("bankrupting_processor", None)
+
     def step(self, stage, banks):
         """ A single step of the agent. """
         if stage in [1, 2, 3]:
@@ -114,10 +116,14 @@ class Bank(Agent):
         self.equity *= (1 + self.equity_growth_rate())
         print "updated_equity"
 
-    def bankrupting(self, banks):
+    def bankrupting(self):
         self.bankrupted = True
+        self.bankrupting_processor.add_bank(self)
+
         recover_rate = self.recover_rate()
-        self.sell_asset(banks, recover_rate)
+        banks = self.bankrupting_processor.context["banks"]
+        other_banks = self.other_agents(banks)
+        self.sell_asset(other_banks, recover_rate)
 
         total_debt = self.deposit + self.total_borrowings()
         total_cash = self.cash
@@ -126,15 +132,28 @@ class Bank(Agent):
         self.deposit = 0
 
         for bank in banks:
-            if self.borrowings[bank.code] > 0 and not bank.is_bankrupted:
+            if self.borrowings[bank.code] > 0:
                 repay = total_cash * self.borrowings[bank.code] / total_debt
                 self.pay(bank, repay)
                 self.borrowings[bank.code] = 0
+                bank.equity -= self.borrowings[bank.code] - repay
                 self.scheduled_repayment_amount[bank.code] = []
                 bank.receive(self, repay)
                 bank.lendings[self.code] = 0
 
         print "bankrupted"
+
+    def after_bankrupting(self, banks):
+        total_debt = self.total_borrowings()
+        total_cash = self.cash
+
+        for bank in banks:
+            if self.borrowings[bank.code] > 0 and self.cash > 0:
+                repay = total_cash * self.borrowings[bank.code] / total_debt
+                self.cash -= repay
+                bank.cash += repay
+                bank.equity -= self.borrowings[bank.code] - repay if not bank.is_bankrupted else None
+            self.borrowings[bank.code] = bank.lendings[self.code] = 0
 
     def stage_1(self, banks):
         '''
@@ -143,8 +162,13 @@ class Bank(Agent):
         self.update_borrowing_target_amount()
         self.update_lending_target_amount()
 
-        self.update_deposit() if not self.is_bankrupted() else self.bankrupting(banks)
-        self.update_external_asset() if not self.is_bankrupted() else self.bankrupting(banks)
+        self.update_deposit()
+        if self.is_bankrupted():
+            self.bankrupting()
+        else:
+            self.update_external_asset()
+            if self.is_bankrupted():
+                self.bankrupting()
 
         print 'Code: ' + str(self.code) + " - Name: " + self.name + " --> Run " + "stage_1"
 
@@ -186,17 +210,20 @@ class Bank(Agent):
         At stage 3, banks update other entries of the balance sheet
         '''
         self.update_equity()
+        if self.is_bankrupted():
+            self.bankrupting()
+        else:
+            for bank in banks:
+                if self.borrowings.get(bank, 0) > 0:
+                    repay_amount = self.scheduled_repayment_amount[bank].pop(0)
+                    if self.cash < repay_amount:
+                        self.scheduled_repayment_amount[bank] = [repay_amount] + self.scheduled_repayment_amount[bank]
+                        self.bankrupting()
+                        break
+                    else:
+                        self.pay(bank, repay_amount)
+                        bank.receive(self, repay_amount)
 
-        for bank in banks:
-            if self.borrowings.get(bank, 0) > 0:
-                repay_amount = self.scheduled_repayment_amount[bank].pop(0)
-                if self.cash < repay_amount:
-                    self.scheduled_repayment_amount[bank] = [repay_amount] + self.scheduled_repayment_amount[bank]
-                    self.bankrupting(banks)
-                    break
-                else:
-                    self.pay(bank, repay_amount)
-                    bank.receive(self, repay_amount)
 
         print 'Code: ' + str(self.code) + " - Name: " + self.name + " --> Run " + "stage_3"
 

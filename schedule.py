@@ -2,7 +2,8 @@ import random
 from collections import defaultdict
 
 from mesa.time import RandomActivation
-
+from agents.bank import Bank
+from agents.bankrupting_processor import BankruptingProcessor
 
 class RandomActivationByBreed(RandomActivation):
     '''
@@ -48,24 +49,29 @@ class RandomActivationByBreed(RandomActivation):
         '''
         Executes the step of each agent breed, one at a time, in random order.
         '''
-        for agent_class in self.agents_by_breed:
-            self.step_breed(agent_class, stage)
+        self.step_bank(stage)
+        self.step_bankrupting()
+
         if stage % cycle_stage == 0:
             self.steps += 1
             self.time += 1
 
-    def step_breed(self, breed, stage):
+    def step_bank(self, stage):
         '''
         Shuffle order and run all agents of a given breed.
 
         Args:
             breed: Class object of the breed to run.
         '''
-        agents = self.agents_by_breed[breed]
-        random.shuffle(agents)
-        for agent in agents:
-            if agent.is_available():
-                agent.step(stage, agent.other_agents(agents))
+        banks = self.agents_by_breed[Bank]
+        random.shuffle(banks)
+        for bank in banks:
+            if bank.is_available():
+                bank.step(stage, bank.other_agents(banks))
+
+    def step_bankrupting(self):
+        bankrupting_processor = self.agents_by_breed[BankruptingProcessor]
+        bankrupting_processor.processing()
 
     def get_breed_count(self, breed_class):
         '''

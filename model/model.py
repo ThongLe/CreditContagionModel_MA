@@ -5,6 +5,7 @@ from mesa.space import MultiGrid
 from mesa.datacollection import DataCollector
 
 from agents.bank import Bank
+from agents.bankrupting_processor import BankruptingProcessor
 
 from data.banks import params, lending_borrowing_matrix
 from schedule import RandomActivationByBreed
@@ -25,11 +26,12 @@ class CreditContagionModel(Model):
 
         self.data_collector = self.create_data_collector()
 
-        # Create sheep:
+        bankrupting_processor = BankruptingProcessor()
         agents = []
         for i in range(self.initial_bank):
             params[i]["lendings"] = lending_borrowing_matrix[params[i]["code"]]
             params[i]["borrowings"] = { bank: lending_borrowing_matrix[bank][params[i]["code"]] for bank in lending_borrowing_matrix }
+            params[i]["bankrupting_processor"] = bankrupting_processor
             agent = Bank(params[i])
             agents.append(agent)
 
@@ -37,6 +39,9 @@ class CreditContagionModel(Model):
             other_agents = agent.other_agents(agents)
             agent.init_scores(other_agents)
             self.schedule.add(agent)
+
+        bankrupting_processor.set_context({"banks": agents})
+        self.schedule.add(bankrupting_processor)
 
     def step(self):
         stages = [1, 2, 3]
