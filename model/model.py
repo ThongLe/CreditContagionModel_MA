@@ -68,7 +68,12 @@ class CreditContagionModel(Model):
 
     def create_data_collector(self):
         model_reporters = {
-            "Banks": lambda m: m.schedule.get_breed_count(Bank)
+            "Banks": lambda m: m.schedule.get_breed_count(Bank),
+            "Total_Asset": lambda m: m.schedule.total_assets(),
+            "Total_Equity": lambda m: m.schedule.total_equity(),
+            "Number_Of_Live_Banks": lambda m: m.schedule.number_live_bank(),
+            "Number_Of_Bankrupted_Banks": lambda m: m.schedule.number_bankrupted_bank(),
+            "Number_Of_Affected_Banks": lambda m: m.schedule.number_affected_bank()
         }
         agent_reporters = {
             "Test": lambda bank: 0

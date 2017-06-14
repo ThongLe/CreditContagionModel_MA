@@ -8,6 +8,7 @@ from data.contanst import *
 class Bank(Agent):
     def __init__(self, params):
         self.code = params.get("code", "")
+        self.name = self.code
         self.unique_id = self.code
 
         self.term = LOAN_TERM
@@ -28,7 +29,8 @@ class Bank(Agent):
         self.short_term_lending_rate = params.get("short_term_lending_rate", 0)
         self.short_term_borrowing_rate = params.get("short_term_borrowing_rate", 0)
 
-        self.scheduled_repayment_amount = self.init_scheduled_payment(self.term)
+        self.scheduled_repayment_amount = {}
+        self.init_scheduled_payment(self.term)
 
         self.growth_rate = params.get("growth_rate", {"deposit":        {"mean": 0, "var": 0},
                                                       "external_asset": {"mean": 0, "var": 0},
@@ -38,6 +40,8 @@ class Bank(Agent):
         self.lending_target_rate = params.get("lending_target_rate", 0)
 
         self.recover_rate_params = params.get("recover_rate", {"min": 0, "max": 0})
+
+        self.is_a_large_bank = params.get("large_bank", False)
 
         self.relation_indicators = {bank_code: 1 if self.lendings[bank_code] > 0 else 0 for bank_code in self.lendings}
         # ======
@@ -54,6 +58,7 @@ class Bank(Agent):
         self.beta = 0
 
         self.bankrupting_processor = params.get("bankrupting_processor", None)
+        self.is_affected_by_bankrupting = False
 
     def step(self, stage, banks):
         """ A single step of the agent. """
@@ -85,22 +90,22 @@ class Bank(Agent):
 
     def pay(self, bank, amount):
         self.cash -= amount
-        self.borrowings[bank] -= amount
+        self.borrowings[bank.code] -= amount
         print "---> " + 'Code: ' + str(self.code) + " - Name: " + self.name + " : " + "paid" + " " + str(amount)
 
     def receive(self, bank, amount):
         self.cash += amount
-        self.lendings[bank] -= amount
+        self.lendings[bank.code] -= amount
         print "---> " + 'Code: ' + str(self.code) + " - Name: " + self.name + " : " + "received" + " " + str(amount)
 
     def lend(self, bank, amount):
         self.cash -= amount
-        self.lendings[bank] += amount
+        self.lendings[bank.code] += amount
         print "---> " + 'Code: ' + str(self.code) + " - Name: " + self.name + " : " + "lend" + " " + str(amount)
 
     def borrow(self, bank, amount, scheduled_payment):
         self.cash += amount
-        self.borrowings[bank] += amount
+        self.borrowings[bank.code] += amount
         self.update_scheduled_payment(bank, scheduled_payment)
         print "---> " + 'Code: ' + str(self.code) + " - Name: " + self.name + " : " + "borrowed" + " " + str(amount)
 
@@ -116,12 +121,10 @@ class Bank(Agent):
         self.equity *= (1 + self.equity_growth_rate())
         print "updated_equity"
 
-    def bankrupting(self):
+    def bankrupting(self, banks):
         self.bankrupted = True
-        self.bankrupting_processor.add_bank(self)
 
         recover_rate = self.recover_rate()
-        banks = self.bankrupting_processor.context["banks"]
         other_banks = self.other_agents(banks)
         self.sell_asset(other_banks, recover_rate)
 
@@ -143,18 +146,6 @@ class Bank(Agent):
 
         print "bankrupted"
 
-    def after_bankrupting(self, banks):
-        total_debt = self.total_borrowings()
-        total_cash = self.cash
-
-        for bank in banks:
-            if self.borrowings[bank.code] > 0 and self.cash > 0:
-                repay = total_cash * self.borrowings[bank.code] / total_debt
-                self.cash -= repay
-                bank.cash += repay
-                bank.equity -= self.borrowings[bank.code] - repay if not bank.is_bankrupted else None
-            self.borrowings[bank.code] = bank.lendings[self.code] = 0
-
     def stage_1(self, banks):
         '''
         A model step. At stage 1, borrowing banks repay part of their loan to lending banks
@@ -164,11 +155,11 @@ class Bank(Agent):
 
         self.update_deposit()
         if self.is_bankrupted():
-            self.bankrupting()
+            self.bankrupting(banks)
         else:
             self.update_external_asset()
             if self.is_bankrupted():
-                self.bankrupting()
+                self.bankrupting(banks)
 
         print 'Code: ' + str(self.code) + " - Name: " + self.name + " --> Run " + "stage_1"
 
@@ -211,14 +202,14 @@ class Bank(Agent):
         '''
         self.update_equity()
         if self.is_bankrupted():
-            self.bankrupting()
+            self.bankrupting(banks)
         else:
             for bank in banks:
-                if self.borrowings.get(bank, 0) > 0:
-                    repay_amount = self.scheduled_repayment_amount[bank].pop(0)
+                if self.borrowings.get(bank.code, 0) > 0:
+                    repay_amount = self.scheduled_repayment_amount[bank.code].pop(0)
                     if self.cash < repay_amount:
-                        self.scheduled_repayment_amount[bank] = [repay_amount] + self.scheduled_repayment_amount[bank]
-                        self.bankrupting()
+                        self.scheduled_repayment_amount[bank.code] = [repay_amount] + self.scheduled_repayment_amount[bank.code]
+                        self.bankrupting(banks)
                         break
                     else:
                         self.pay(bank, repay_amount)
@@ -230,7 +221,7 @@ class Bank(Agent):
     # ===================================================================
 
     def is_available(self):
-        return self.bankrupted
+        return not self.bankrupted
 
     def is_bankrupted(self):
         if self.bankrupted:
@@ -264,12 +255,12 @@ class Bank(Agent):
         return offer_amount, scheduling_repayment
 
     def init_scheduled_payment(self, term):
-        scheduled_repayment_amount = {}
+        self.scheduled_repayment_amount = {}
         for bank_code in self.borrowings:
             total_borrowing_amount = self.borrowings[bank_code]
             short_term_payment_amount = self.short_term_borrowing_rate * total_borrowing_amount
             long_term_payment_amount = (1 - self.short_term_borrowing_rate) * total_borrowing_amount
-            scheduled_repayment_amount[bank_code] = [0] + [short_term_payment_amount + float(long_term_payment_amount) / term] + [float(long_term_payment_amount) / term] * (term - 1)
+            self.scheduled_repayment_amount[bank_code] = [0] + [short_term_payment_amount + float(long_term_payment_amount) / term] + [float(long_term_payment_amount) / term] * (term - 1)
 
     def init_scores(self, banks):
         self.update_relation_score(banks)
@@ -295,25 +286,28 @@ class Bank(Agent):
         return [bank for bank in banks if (self.unique_id != bank.unique_id) and (bank.is_available())]
 
     def update_scheduled_payment(self, bank, scheduled_payment):
-        _ = [len(self.scheduled_repayment_amount[bank]), len(scheduled_payment)]
+        _ = [len(self.scheduled_repayment_amount[bank.code]), len(scheduled_payment)]
         add_term = max(_) - min(_)
-        if (len(self.scheduled_repayment_amount[bank]) != len(scheduled_payment)):
-            if len(self.scheduled_repayment_amount[bank]) > len(scheduled_payment):
+        if (len(self.scheduled_repayment_amount[bank.code]) != len(scheduled_payment)):
+            if len(self.scheduled_repayment_amount[bank.code]) > len(scheduled_payment):
                 scheduled_payment += [0 for _ in range(add_term)]
             else:
-                self.scheduled_repayment_amount[bank] += [0 for _ in range(add_term)]
+                self.scheduled_repayment_amount[bank.code] += [0 for _ in range(add_term)]
 
-        self.scheduled_repayment_amount[bank] = [x + y for x, y in zip(self.scheduled_repayment_amount[bank], scheduled_payment)]
+        self.scheduled_repayment_amount[bank.code] = [x + y for x, y in zip(self.scheduled_repayment_amount[bank.code], scheduled_payment)]
 
     def update_relation_score(self, banks, borrowed_amount=None):
         if borrowed_amount is None:
-            self.relation_score = {fl.relation_score(0, self.total_borrowings()) for bank in banks if self.relation_indicators[bank.code] == 1 }
+            self.relation_score = {bank: fl.relation_score(0, self.total_borrowings()) for bank in banks}
         else:
-            self.relation_score = {fl.relation_score(self.relation_score[bank], borrowed_amount) for bank in banks}
+            self.relation_score = {bank: fl.relation_score(self.relation_score[bank], borrowed_amount) for bank in banks}
 
     def update_size_score(self, banks):
-        bank_assets = [_.total_asset() for _ in banks]
-        self.size_score = {bank: fl.size_score(bank.total_asset(), bank_assets, self.relation_indicators) for bank in banks}
+        bank_assets, indicators = [], []
+        for _ in banks:
+            bank_assets.append(_.total_asset())
+            indicators.append(self.relation_indicators[_.code])
+        self.size_score = {bank: fl.size_score(bank.total_asset(), bank_assets, indicators) for bank in banks}
 
     def update_total_score(self, banks):
         for bank in banks:
@@ -343,7 +337,9 @@ class Bank(Agent):
         for bank in banks:
             if not bank.is_bankrupted() and self.lendings[bank.code] > 0:
                 debt = recover_rate * self.lendings[bank.code]
-                bank.bankrupting(banks) if bank.cash < debt else None
+                if bank.cash < debt:
+                    bank.bankrupted = True
+                    self.bankrupting_processor.add_bank(bank)
                 repay_debt = min(bank.cash, debt)
                 bank.cash -= repay_debt
                 self.cash += repay_debt

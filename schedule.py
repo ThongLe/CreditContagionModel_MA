@@ -70,7 +70,7 @@ class RandomActivationByBreed(RandomActivation):
                 bank.step(stage, bank.other_agents(banks))
 
     def step_bankrupting(self):
-        bankrupting_processor = self.agents_by_breed[BankruptingProcessor]
+        bankrupting_processor = self.agents_by_breed[BankruptingProcessor][0]
         bankrupting_processor.processing()
 
     def get_breed_count(self, breed_class):
@@ -78,3 +78,23 @@ class RandomActivationByBreed(RandomActivation):
         Returns the current number of agents of certain breed in the queue.
         '''
         return len(self.agents_by_breed[breed_class])
+
+    def total_assets(self):
+        banks = self.agents_by_breed[Bank]
+        return sum([bank.total_asset() for bank in banks])
+
+    def total_equity(self):
+        banks = self.agents_by_breed[Bank]
+        return sum([bank.equity for bank in banks])
+
+    def number_live_bank(self):
+        banks = self.agents_by_breed[Bank]
+        return len([bank for bank in banks if not bank.is_bankrupted()])
+
+    def number_bankrupted_bank(self):
+        banks = self.agents_by_breed[Bank]
+        return len([bank for bank in banks if bank.is_bankrupted()])
+
+    def number_affected_bank(self):
+        banks = self.agents_by_breed[Bank]
+        return len([bank for bank in banks if bank.is_affected_by_bankrupting])
