@@ -8,13 +8,14 @@ class BankruptingProcessor(Agent):
         self.context = context
         self.bankrupted_bank = []
 
-        self.cash = None
-        self.equity = None
-        self.deposit = None
-        self.external_asset = None
-        self.scheduled_repayment_amount = None
-        self.borrowings = None
-        self.lendings = None
+        self.cash = 0
+        self.equity = 0
+        self.deposit = 0
+        self.external_asset = 0
+        self.scheduled_repayment_amount = {}
+        self.borrowings = {}
+        self.lendings = {}
+        self.bankrupted = None
 
     def set_context(self, context):
         self.context = context
@@ -27,3 +28,6 @@ class BankruptingProcessor(Agent):
             bank = self.bankrupted_bank.pop()
             banks = bank.other_agents(self.context["banks"])
             bank.bankrupting(banks)
+
+    def round_scheduled_repayment_amount(self):
+        return None

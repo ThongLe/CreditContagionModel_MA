@@ -197,7 +197,7 @@ class Bank(Agent):
             bank = bank_score.keys()[0]
             if not bank.is_bankrupted and bank.is_available_for_lendings():
                 if bank.can_give_a_loan_to(self):
-                    real_borrowing_amount = self.ask_for_a_loan(bank, self.borrowing_target_amount - borrowed_amount)
+                    real_borrowing_amount = round(self.ask_for_a_loan(bank, self.borrowing_target_amount - borrowed_amount), 5)
                     if real_borrowing_amount > 0:
                         scheduling_repayment = [real_borrowing_amount / term for _ in range(term)]\
                             if real_borrowing_amount > 0 else []
@@ -357,14 +357,24 @@ class Bank(Agent):
     def sell_asset(self, banks, recover_rate):
         cash = recover_rate * self.sell_external_asset()
         self.cash += cash
+        print 'Code', self.code, 'sell debt:'
         for bank in banks:
             if not bank.is_bankrupted() and self.lendings[bank.code] > 0:
                 debt = recover_rate * self.lendings[bank.code]
                 if bank.cash < debt:
-                    bank.bankrupted = True
+                    # bank.bankrupted = True
+                    print '---> Code', bank.code, 'has not enough cash', "-", "cash", ":", bank.cash, "-", "debt", ":", debt
                     self.bankrupting_processor.add_bank(bank)
+                else:
+                    print '---> Code', bank.code, 'bought debt', "-", "cash", ":", bank.cash, "-", "debt", ":", debt
                 repay_debt = min(bank.cash, debt)
                 bank.cash -= repay_debt
                 self.cash += repay_debt
+                self.cash = round(self.cash, 5)
                 bank.borrowings[self.code] = self.lendings[bank.code] = 0
                 bank.scheduled_repayment_amount[self.code] = []
+
+    def round_scheduled_repayment_amount(self):
+        return {bank_code: [round(_, 5) \
+                            for _ in self.scheduled_repayment_amount[bank_code]]\
+                for bank_code in self.scheduled_repayment_amount}

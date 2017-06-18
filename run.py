@@ -1,8 +1,8 @@
 from model.model import CreditContagionModel
-from data.banks import params
+from data.banks_1 import params
 
 model = CreditContagionModel(params.__len__())
-model.run_model(10)
+model.run_model(20)
 
 model.export_report()
 a = 0

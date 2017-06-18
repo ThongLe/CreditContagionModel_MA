@@ -1,4 +1,5 @@
 import random
+import copy
 
 from mesa import Model
 from mesa.space import MultiGrid
@@ -7,7 +8,7 @@ from mesa.datacollection import DataCollector
 from agents.bank import Bank
 from agents.bankrupting_processor import BankruptingProcessor
 
-from data.banks import params, lending_borrowing_matrix
+from data.banks_1 import params, lending_borrowing_matrix
 from schedule import RandomActivationByBreed
 
 import csv
@@ -78,13 +79,14 @@ class CreditContagionModel(Model):
             "Number_Of_Affected_Banks": lambda m: m.schedule.number_affected_bank()
         }
         agent_reporters = {
-            "cash": lambda bank: bank.cash,
-            "equity": lambda bank: bank.equity,
-            "deposit": lambda bank: bank.deposit,
-            "external_asset": lambda bank: bank.external_asset,
-            "scheduled_repayment_amount": lambda bank: bank.scheduled_repayment_amount,
-            "lendings": lambda bank: bank.lendings,
-            "borrowings": lambda bank: bank.borrowings
+            "cash": lambda bank: round(bank.cash, 5),
+            "equity": lambda bank: round(bank.equity, 5),
+            "deposit": lambda bank: round(bank.deposit, 5),
+            "external_asset": lambda bank: round(bank.external_asset, 5),
+            "scheduled_repayment_amount": lambda bank: copy.deepcopy(bank.round_scheduled_repayment_amount()),
+            "lendings": lambda bank: copy.deepcopy({_: round(bank.lendings[_], 5) for _ in bank.lendings}),
+            "borrowings": lambda bank: copy.deepcopy({_: round(bank.lendings[_], 5) for _ in bank.borrowings}),
+            "is_bankrupted": lambda bank: bank.bankrupted
         }
         return DataCollector(model_reporters, agent_reporters)
 
