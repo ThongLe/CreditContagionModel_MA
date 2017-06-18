@@ -24,6 +24,6 @@ def total_score(weight, score):
     score = np.dot(weight, score)
     return score
 
-def lending_decision(score):
-    p = 1.0 / (1 + ALPHA * math.exp(BETA * score))
+def lending_decision(score, alpha, beta):
+    p = 1.0 / (1 + alpha * math.exp(beta * score))
     return p

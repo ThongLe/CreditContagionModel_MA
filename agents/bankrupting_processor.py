@@ -8,6 +8,14 @@ class BankruptingProcessor(Agent):
         self.context = context
         self.bankrupted_bank = []
 
+        self.cash = None
+        self.equity = None
+        self.deposit = None
+        self.external_asset = None
+        self.scheduled_repayment_amount = None
+        self.borrowings = None
+        self.lendings = None
+
     def set_context(self, context):
         self.context = context
 
