@@ -66,7 +66,7 @@ class RandomActivationByBreed(RandomActivation):
         banks = self.agents_by_breed[Bank]
         random.shuffle(banks)
         for bank in banks:
-            if bank.is_available():
+            if not bank.is_bankrupted():
                 bank.step(stage, bank.other_agents(banks))
 
     def step_bankrupting(self):

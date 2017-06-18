@@ -195,7 +195,7 @@ class Bank(Agent):
 
         for bank_score in bank_priority:
             bank = bank_score.keys()[0]
-            if bank.is_available_for_lendings():
+            if not bank.is_bankrupted and bank.is_available_for_lendings():
                 if bank.can_give_a_loan_to(self):
                     real_borrowing_amount = self.ask_for_a_loan(bank, self.borrowing_target_amount - borrowed_amount)
                     if real_borrowing_amount > 0:
@@ -327,7 +327,8 @@ class Bank(Agent):
     def update_size_score(self, banks):
         bank_assets, indicators = [], []
         for _ in banks:
-            bank_assets.append(_.total_asset())
+            total_asset = max(_.total_asset(), 0)
+            bank_assets.append(total_asset)
             indicators.append(self.relation_indicators[_.code])
         self.size_score = {bank: fl.size_score(bank.total_asset(), bank_assets, indicators) for bank in banks}
 
