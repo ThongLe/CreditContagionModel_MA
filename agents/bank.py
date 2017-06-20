@@ -17,14 +17,16 @@ class Bank(Agent):
         liability = params.get("liability", {})
         self.equity = liability.get("equity", 0)
         self.deposit = liability.get("deposit", 0)
-        borrowings = params.get("borrowings", {}) # self.total_borrowings() == liability["total"] - self.equity - self.deposit
+        # self.total_borrowings() == liability["total"] - self.equity - self.deposit
+        borrowings = params.get("borrowings", {})
         self.borrowings = {code: borrowings[code] for code in borrowings if code != self.code}
 
         # Assets
         asset = params.get("asset", {})
         self.cash = asset.get("cash", 0)
         self.external_asset = asset.get("external_asset", 0)
-        lendings = params.get("lendings", {})   # self.total_lendings() == asset["total"] - self.cash - self.external_asset
+        # self.total_lendings() == asset["total"] - self.cash - self.external_asset
+        lendings = params.get("lendings", {})
         self.lendings = {code: lendings[code] for code in lendings if code != self.code}
 
         self.short_term_lending_rate = params.get("short_term_lending_rate", 0)
@@ -37,8 +39,10 @@ class Bank(Agent):
                                                       "external_asset": {"mean": 0, "var": 0},
                                                       "equity":         {"mean": 0, "var": 0}})
 
+        self.external_asset_target_rate = params.get("external_asset_rate", 0.7)
         self.borrowing_target_rate = params.get("borrowing_target_rate", 0)
         self.lending_target_rate = params.get("lending_target_rate", 0)
+        self.deposit_target_rate = params.get("deposit_target_rate", 0.6)
 
         self.recover_rate_params = params.get("recover_rate", {"min": 0, "max": 0})
 
@@ -47,8 +51,14 @@ class Bank(Agent):
         self.relation_indicators = {bank_code: 1 if self.lendings[bank_code] > 0 else 0 for bank_code in self.lendings}
         # ======
 
+        self.total_asset_target_amount = 0
         self.borrowing_target_amount = 0
         self.lending_target_amount = 0
+        self.deposit_target_amount = 0
+        self.borrowing_amount = 0
+        self.lending_amount = 0
+        self.lending_count = 0
+
         self.bankrupted = False
 
         self.relation_score = {}
@@ -87,54 +97,56 @@ class Bank(Agent):
     # ===================================================================
 
     def pay(self, bank, amount):
-        print "--->", 'Code:', str(self.code), "- Name:", self.name, ":", "paid", amount, \
-            "-", "cash", ":", self.cash, "-", amount
+        print "--->", 'Code:', str(self.code), "- Name:", self.name, ":", "paid", amount#, \
+            #"-", "cash", ":", self.cash, "-", amount
         self.cash -= amount
         self.borrowings[bank.code] -= amount
 
 
     def receive(self, bank, amount):
-        print "--->", 'Code:', str(self.code), "- Name:", self.name, ":", "received", amount, \
-            "-", "cash", ":", self.cash, "+", amount
+        print "--->", 'Code:', str(self.code), "- Name:", self.name, ":", "received", amount#, \
+            #"-", "cash", ":", self.cash, "+", amount
         self.cash += amount
         self.lendings[bank.code] -= amount
 
 
     def lend(self, bank, amount):
-        print "--->", 'Code:', str(self.code), "- Name:", self.name, ":", "lend", amount, \
-            "-", "cash", ":", self.cash, "-", amount
+        print "--->", 'Code:', str(self.code), "- Name:", self.name, ":", "lend", amount#, \
+            #"-", "cash", ":", self.cash, "-", amount
         self.cash -= amount
         self.lendings[bank.code] += amount
 
     def borrow(self, bank, amount, scheduled_payment):
-        print "--->", 'Code:', str(self.code), "- Name:", self.name, ":", "borrowed", amount, \
-            "-", "cash", ":", self.cash, "+", amount
+        print "--->", 'Code:', str(self.code), "- Name:", self.name, ":", "borrowed", amount#, \
+            #"-", "cash", ":", self.cash, "+", amount
         self.cash += amount
         self.borrowings[bank.code] += amount
         self.update_scheduled_payment(bank, scheduled_payment)
 
     def update_deposit(self):
-        new_deposit = self.deposit * math.exp(self.deposit_growth_rate())
+        new_deposit = self.deposit_target_amount * (1 + self.deposit_noise_rate())
         print "--->", 'Code:', str(self.code), "updated_deposit", "-", "deposit", ":", self.deposit, "-", \
-            "new_deposit", ":", new_deposit, "-", "cash", ":", self.cash, "+", new_deposit - self.deposit
-        self.cash += new_deposit - self.deposit
+            "new_deposit", ":", new_deposit#, "-", "cash", ":", self.cash, "+", new_deposit - self.deposit
+        # self.cash += new_deposit - self.deposit
         self.deposit = new_deposit
 
     def update_external_asset(self):
         new_external_asset = self.external_asset * math.exp(self.external_asset_growth_rate())
         print "--->", 'Code:', str(self.code), "updated_external_asset", "-", "external_asset", ":", \
-            self.external_asset, "-", "new_external_asset", ":", new_external_asset, "-", \
-            "cash", ":", self.cash, "-", new_external_asset - self.external_asset
-        self.cash -= new_external_asset - self.external_asset
+            self.external_asset, "-", "new_external_asset", ":", new_external_asset#, "-" \
+            #"cash", ":", self.cash, "-", new_external_asset - self.external_asset
+        # self.cash -= new_external_asset - self.external_asset
         self.external_asset = new_external_asset
 
     def update_equity(self):
         new_equity = self.equity * (1 + self.equity_growth_rate())
         print "--->", 'Code:', str(self.code), "updated_equity", "-", "equity", ":", self.equity, "-", \
-            "new_equity", ":", new_equity, "-", "cash", ":", self.cash, "+", new_equity - self.equity
+            "new_equity", ":", new_equity#, "-", "cash", ":", self.cash, "+", new_equity - self.equity
         self.cash += new_equity - self.equity
         self.equity = new_equity
 
+    def update_cash(self):
+        self.cash = self.total_liability() - self.total_lendings() - self.external_asset
 
     def bankrupting(self, banks):
         recover_rate = self.recover_rate()
@@ -163,20 +175,21 @@ class Bank(Agent):
         '''
         A model step. At stage 1, borrowing banks repay part of their loan to lending banks
         '''
-        self.update_borrowing_target_amount()
+        self.update_external_asset()
+        self.update_total_asset_target_amount()
         self.update_lending_target_amount()
-
+        self.update_deposit_target_amount()
+        self.update_borrowing_target_amount()
         self.update_deposit()
+        self.update_cash()
+
+        print "--->", 'Code:', str(self.code), '- cash :', self.cash
+
         if self.is_bankrupted():
             self.bankrupting(banks)
-        else:
-            self.update_external_asset()
-            if self.is_bankrupted():
-                self.bankrupting(banks)
 
         print 'Code:', str(self.code), 'Balance Sheet', ":", "Okay"
         print 'Code:', str(self.code), "- Name:", self.name, "--> Run", "stage_1"
-
 
     def stage_2(self, banks):
         '''
@@ -197,14 +210,14 @@ class Bank(Agent):
             bank = bank_score.keys()[0]
             if not bank.is_bankrupted and bank.is_available_for_lendings():
                 if bank.can_give_a_loan_to(self):
-                    real_borrowing_amount = round(self.ask_for_a_loan(bank, self.borrowing_target_amount - borrowed_amount), 5)
+                    real_borrowing_amount = round(self.ask_for_a_loan(bank, self.borrowing_amount - borrowed_amount), 5)
                     if real_borrowing_amount > 0:
                         scheduling_repayment = [real_borrowing_amount / term for _ in range(term)]\
                             if real_borrowing_amount > 0 else []
                         self.borrow(bank, real_borrowing_amount, scheduling_repayment)
                         bank.lend(self, real_borrowing_amount)
                         borrowed_amount += real_borrowing_amount
-                        if self.borrowing_target_amount - borrowed_amount == 0:
+                        if self.borrowing_amount - borrowed_amount == 0:
                             break
 
         self.update_relation_score(banks, borrowed_amount)
@@ -295,14 +308,30 @@ class Bank(Agent):
     def beta(self):
         return np.random.uniform(-1.1, -0.9)
 
+    def update_total_asset_target_amount(self):
+        self.total_asset_target_amount = self.external_asset / self.external_asset_target_rate
+
     def update_borrowing_target_amount(self):
-        self.borrowing_target_amount = max(self.borrowing_target_rate / (1 - self.borrowing_target_rate) * (self.deposit + self.equity) - self.total_borrowings(), 0)
+        borrowing_target_amount = self.total_asset_target_amount * self.borrowing_target_rate
+        self.borrowing_amount = max(borrowing_target_amount - self.total_borrowings(), 0)
 
     def update_lending_target_amount(self):
-        self.lending_target_amount = max(self.total_asset() * self.borrowing_target_rate - self.total_lendings(), 0)
+        self.lending_target_amount = self.total_asset_target_amount * self.lending_target_rate
+        lending_amount = self.lending_target_amount - self.total_lendings()
+        if lending_amount > 0:
+            self.lending_amount = float(lending_amount) / LENDING_COUNT
+            self.lending_count = LENDING_COUNT
+        else:
+            self.lending_amount, self.lending_count = 0, 0
+
+    def update_deposit_target_amount(self):
+        self.deposit_target_amount = self.total_asset_target_amount * self.deposit_target_rate
 
     def available_lending_amount(self):
-        return self.lending_target_amount * self.lending_target_rate
+        if self.lending_count > 0:
+            self.lending_count -= 1
+            return self.lending_amount
+        return 0
 
     def other_agents(self, banks):
         return [bank for bank in banks if (self.unique_id != bank.unique_id)] # and (bank.is_available())]
@@ -310,7 +339,7 @@ class Bank(Agent):
     def update_scheduled_payment(self, bank, scheduled_payment):
         _ = [len(self.scheduled_repayment_amount[bank.code]), len(scheduled_payment)]
         add_term = max(_) - min(_)
-        if (len(self.scheduled_repayment_amount[bank.code]) != len(scheduled_payment)):
+        if len(self.scheduled_repayment_amount[bank.code]) != len(scheduled_payment):
             if len(self.scheduled_repayment_amount[bank.code]) > len(scheduled_payment):
                 scheduled_payment += [0 for _ in range(add_term)]
             else:
@@ -340,8 +369,9 @@ class Bank(Agent):
     def recover_rate(self):
         return np.random.uniform(self.recover_rate_params["min"], self.recover_rate_params["max"]) - SHOCK_RATE
 
-    def deposit_growth_rate(self):
-        return np.random.normal(self.growth_rate["deposit"]["mean"], self.growth_rate["deposit"]["var"])
+    def deposit_noise_rate(self):
+        # return np.random.standard_normal(1)[0]
+        return np.random.uniform(-0.02, 0.02)
 
     def external_asset_growth_rate(self):
         return np.random.normal(self.growth_rate["external_asset"]["mean"], self.growth_rate["external_asset"]["var"])
