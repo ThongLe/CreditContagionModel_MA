@@ -47,7 +47,7 @@ class CreditContagionModel(Model):
         self.schedule.add(bankrupting_processor)
 
     def step(self):
-        stages = [1, 2, 3]
+        stages = [1, 2, 3, 4]
         for stage in stages:
             self.schedule.step(stage, cycle_stage=stages.__len__())
         self.data_collector.collect(self)

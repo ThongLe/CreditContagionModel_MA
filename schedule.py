@@ -64,10 +64,13 @@ class RandomActivationByBreed(RandomActivation):
             breed: Class object of the breed to run.
         '''
         banks = self.agents_by_breed[Bank]
+        bankrupting_processor = self.agents_by_breed[BankruptingProcessor][0]
         random.shuffle(banks)
         for bank in banks:
             if not bank.is_bankrupted():
                 bank.step(stage, bank.other_agents(banks))
+            else:
+                bankrupting_processor.add_bank(bank)
 
     def step_bankrupting(self):
         bankrupting_processor = self.agents_by_breed[BankruptingProcessor][0]
