@@ -94,7 +94,7 @@ class Bank(Agent):
         return self.deposit + self.total_borrowings() + self.equity
 
     def check_balance_sheet_problem(self):
-        return self.total_asset() == self.total_liability()
+        return round(self.total_asset() - self.total_liability(), 5) == 0
 
     # ===================================================================
 
@@ -196,7 +196,7 @@ class Bank(Agent):
         if self.is_bankrupted():
             self.bankrupting(banks)
 
-        print 'Code:', str(self.code), 'Balance Sheet', ":", "Okay"
+        print 'Code:', str(self.code), 'Balance Sheet', ":", str(self.check_balance_sheet_problem())
         print 'Code:', str(self.code), "- Name:", self.name, "--> Run", "stage_1"
 
     def stage_2(self, banks):
@@ -234,14 +234,13 @@ class Bank(Agent):
                             break
 
         self.update_relation_score(banks, borrowed_amount)
-        self.update_cash()
 
         print "--->", 'Code:', str(self.code), '- cash :', self.cash
 
         if self.is_bankrupted():
             self.bankrupting(banks)
 
-        print 'Code:', str(self.code), 'Balance Sheet', ":", "Okay"
+        print 'Code:', str(self.code), 'Balance Sheet', ":", str(self.check_balance_sheet_problem())
         print 'Code:', str(self.code), "- Name:", self.name, "--> Run", "stage_2"
 
     def stage_3(self, banks):
@@ -253,15 +252,11 @@ class Bank(Agent):
         for bank in banks:
             if self.borrowings.get(bank.code, 0) > 0 and len(self.scheduled_repayment_amount[bank.code]) > 0:
                 repay_amount = self.scheduled_repayment_amount[bank.code].pop(0)
-                if self.cash < repay_amount:
-                    self.scheduled_repayment_amount[bank.code] = [repay_amount] + self.scheduled_repayment_amount[bank.code]
-                    self.bankrupting(banks)
-                    break
-                else:
-                    self.pay(bank, repay_amount)
-                    bank.receive(self, repay_amount)
+                self.pay(bank, repay_amount)
+                bank.receive(self, repay_amount)
 
-        print 'Code:', str(self.code), 'Balance Sheet', ":", "Okay"
+        print 'Code:', str(self.code), 'Balance Sheet', ":", str(self.check_balance_sheet_problem()),\
+            'diff = ', math.fabs(self.total_asset() - self.total_liability())
         print 'Code:', str(self.code), "- Name:", self.name, "--> Run", "stage_3"
 
     def stage_4(self, banks):
