@@ -55,19 +55,21 @@ class CreditContagionModel(Model):
             print([self.schedule.time,
                    self.schedule.get_breed_count(Bank)])
 
-    def run_model(self, step_count=200):
+    def run_model(self, stable_count_limit=200):
         if self.verbose:
             print('Project Name: ' + self.name)
             print('Initial number banks: ',
                   self.schedule.get_breed_count(Bank))
 
-        for i in range(step_count):
+        stable_count, bankrupted_bank_count = 0, 0
+        while stable_count < stable_count_limit:
+            count = self.initial_bank - self.schedule.number_bankrupted_bank()
+            if bankrupted_bank_count != count:
+                stable_count = 0
+                bankrupted_bank_count = count
+            else:
+                stable_count += 1
             self.step()
-
-        if self.verbose:
-            print('')
-            print('Final number banks: ',
-                  self.schedule.get_breed_count(Bank))
 
     def create_data_collector(self):
         model_reporters = {
