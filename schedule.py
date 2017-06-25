@@ -20,6 +20,7 @@ class RandomActivationByBreed(RandomActivation):
     def __init__(self, model):
         RandomActivation.__init__(self, model)
         self.agents_by_breed = defaultdict(list)
+        self.run_time = 0
 
     def add(self, agent):
         '''
@@ -101,3 +102,9 @@ class RandomActivationByBreed(RandomActivation):
     def number_affected_bank(self):
         banks = self.agents_by_breed[Bank]
         return len([bank for bank in banks if bank.is_affected_by_bankrupting])
+
+    def set_run_time(self, time):
+        self.run_time = time
+
+    def get_run_time(self):
+        return self.run_time

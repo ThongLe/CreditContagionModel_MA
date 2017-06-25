@@ -12,13 +12,14 @@ from data.banks_1 import params, lending_borrowing_matrix
 from schedule import RandomActivationByBreed
 
 import csv
+import os
 
 class CreditContagionModel(Model):
 
     initial_bank = 100
 
     ### To do
-    def __init__(self, initial_bank=100):
+    def __init__(self, shock_type='Type_1', initial_bank=20, stable_count_limit=10, test_case=0):
         self.name = "Credit Contagion Model"
 
         # Set parameters
@@ -46,6 +47,10 @@ class CreditContagionModel(Model):
         bankrupting_processor.set_context({"banks": agents})
         self.schedule.add(bankrupting_processor)
 
+        self.shock_type = shock_type
+        self.stable_count_limit = stable_count_limit
+        self.test_case = test_case
+
     def step(self):
         stages = [1, 2, 3, 4]
         for stage in stages:
@@ -55,14 +60,17 @@ class CreditContagionModel(Model):
             print([self.schedule.time,
                    self.schedule.get_breed_count(Bank)])
 
-    def run_model(self, stable_count_limit=200):
+    def run_model(self, stable_count_limit=10):
+        self.stable_count_limit = self.stable_count_limit or stable_count_limit
         if self.verbose:
             print('Project Name: ' + self.name)
             print('Initial number banks: ',
                   self.schedule.get_breed_count(Bank))
 
-        stable_count, bankrupted_bank_count = 0, 0
-        while stable_count < stable_count_limit:
+        i, stable_count, bankrupted_bank_count = 0, 0, 0
+        while stable_count < self.stable_count_limit:
+            i += 1
+            self.schedule.set_run_time(i)
             count = self.initial_bank - self.schedule.number_bankrupted_bank()
             if bankrupted_bank_count != count:
                 stable_count = 0
@@ -73,6 +81,9 @@ class CreditContagionModel(Model):
 
     def create_data_collector(self):
         model_reporters = {
+            "Type_Test": lambda m: "Type 1",
+            "Test_Case": lambda m: m.test_case,
+            "Step": lambda m: m.schedule.get_run_time(),
             "Banks": lambda m: m.schedule.get_breed_count(Bank),
             "Total_Asset": lambda m: m.schedule.total_assets(),
             "Total_Equity": lambda m: m.schedule.total_equity(),
@@ -100,7 +111,7 @@ class CreditContagionModel(Model):
         report_types = self.data_collector.agent_vars.keys()
         for report_type in report_types:
             report = self.data_collector.agent_vars[report_type]
-            with open('statistic_reports/reports/' + report_type + '.csv', 'wb') as csvfile:
+            with open(self.build_file_path(report_type), 'wb') as csvfile:
                 spamwriter = csv.writer(csvfile, delimiter=',')
                 bank_name = [report[0][i][0] for i in range(0, self.initial_bank)]
                 spamwriter.writerow(bank_name)
@@ -109,7 +120,7 @@ class CreditContagionModel(Model):
                     spamwriter.writerow(values)
 
     def export_model_vars(self):
-        with open('statistic_reports/model_report.csv', 'wb') as csvfile:
+        with open(self.build_file_path('overview_report'), 'wb') as csvfile:
             spamwriter = csv.writer(csvfile, delimiter=',')
             keys = self.data_collector.model_vars.keys()
             spamwriter.writerow(keys)
@@ -117,3 +128,10 @@ class CreditContagionModel(Model):
                 for i in range(0, self.data_collector.model_vars[keys[0]].__len__()):
                     values = [self.data_collector.model_vars[key][i] for key in keys]
                     spamwriter.writerow(values)
+
+    def build_file_path(self, report_type):
+        file_path = 'statistic_reports/' + self.shock_type + '/' + str(self.test_case) + '/' + report_type + '.csv'
+        directory = os.path.dirname(file_path)
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+        return file_path
