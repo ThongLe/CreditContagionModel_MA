@@ -19,7 +19,7 @@ class CreditContagionModel(Model):
     initial_bank = 100
 
     ### To do
-    def __init__(self, shock_type='Type_1', initial_bank=20, stable_count_limit=10, test_case=0):
+    def __init__(self, shock_type='Type_1', shocked_bank_number=1, initial_bank=20, stable_count_limit=10, test_case=0):
         self.name = "Credit Contagion Model"
 
         # Set parameters
@@ -31,6 +31,7 @@ class CreditContagionModel(Model):
         self.data_collector = self.create_data_collector()
 
         bankrupting_processor = BankruptingProcessor()
+        self.shocked_bank_number = shocked_bank_number
         agents = []
         for i in range(self.initial_bank):
             params[i]["lendings"] = lending_borrowing_matrix[params[i]["code"]]
@@ -51,33 +52,39 @@ class CreditContagionModel(Model):
         self.stable_count_limit = stable_count_limit
         self.test_case = test_case
 
-    def step(self):
+    def step(self, shock=False):
         stages = [1, 2, 3, 4]
         for stage in stages:
             self.schedule.step(stage, cycle_stage=stages.__len__())
+        if shock:
+            self.shocked_bank(self.shocked_bank_number)
         self.data_collector.collect(self)
         if self.verbose:
             print([self.schedule.time,
                    self.schedule.get_breed_count(Bank)])
 
-    def run_model(self, stable_count_limit=10):
+    def run_model(self, limit_step=10, stable_count_limit=10):
         self.stable_count_limit = self.stable_count_limit or stable_count_limit
         if self.verbose:
             print('Project Name: ' + self.name)
             print('Initial number banks: ',
                   self.schedule.get_breed_count(Bank))
 
-        i, stable_count, bankrupted_bank_count = 0, 0, 0
-        while stable_count < self.stable_count_limit:
-            i += 1
-            self.schedule.set_run_time(i)
+        step, i, stable_count, bankrupted_bank_count = 0, 0, 0, 0
+        while step < limit_step or stable_count < self.stable_count_limit:
+            self.schedule.set_run_time(step + i)
             count = self.initial_bank - self.schedule.number_bankrupted_bank()
             if bankrupted_bank_count != count:
                 stable_count = 0
                 bankrupted_bank_count = count
             else:
                 stable_count += 1
-            self.step()
+
+            step, i = (step + 1, i) if step < limit_step else (step, i + 1)
+            if step == limit_step - 1:
+                self.step(True)
+            else:
+                self.step()
 
     def create_data_collector(self):
         model_reporters = {
@@ -95,7 +102,7 @@ class CreditContagionModel(Model):
             "cash": lambda bank: round(bank.cash, 5),
             "equity": lambda bank: round(bank.equity, 5),
             "deposit": lambda bank: round(bank.deposit, 5),
-            "external_asset": lambda bank: round(bank.external_asset, 5),
+            "external_asset": lambda bank: str(round(bank.external_asset, 5)) + ('(shocked)' if bank.is_shocked else ""),
             "scheduled_repayment_amount": lambda bank: copy.deepcopy(bank.round_scheduled_repayment_amount()),
             "lendings": lambda bank: copy.deepcopy({_: round(bank.lendings[_], 5) for _ in bank.lendings}),
             "borrowings": lambda bank: copy.deepcopy({_: round(bank.lendings[_], 5) for _ in bank.borrowings}),
@@ -135,3 +142,12 @@ class CreditContagionModel(Model):
         if not os.path.exists(directory):
             os.makedirs(directory)
         return file_path
+
+    def shocked_bank(self, number_of_banks):
+        shock_count = 0
+        banks = self.schedule.agents_by_breed[Bank]
+        while shock_count < number_of_banks:
+            bank_index = random.randint(0, self.initial_bank - 1)
+            if not banks[bank_index].is_bankrupted():
+                shock_count += 1
+                banks[bank_index].set_shock()

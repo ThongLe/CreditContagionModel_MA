@@ -17,6 +17,8 @@ class BankruptingProcessor(Agent):
         self.lendings = {}
         self.bankrupted = None
 
+        self.is_shocked = False
+
     def set_context(self, context):
         self.context = context
 

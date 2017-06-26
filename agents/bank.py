@@ -69,6 +69,8 @@ class Bank(Agent):
         self.bankrupting_processor = params.get("bankrupting_processor", None)
         self.is_affected_by_bankrupting = False
 
+        self.is_shocked = False
+
     def step(self, stage, banks):
         """ A single step of the agent. """
         if stage in [1, 2, 3]:
@@ -135,11 +137,16 @@ class Bank(Agent):
         self.deposit = new_deposit
 
     def update_external_asset(self):
-        new_external_asset = self.external_asset * math.exp(self.external_asset_growth_rate())
+        if self.is_shocked:
+            shock_rate = self.get_shock_rate()
+            new_external_asset = self.external_asset * (1 - shock_rate)
+            self.equity -= self.external_asset * shock_rate
+        else:
+            new_external_asset = self.external_asset * math.exp(self.external_asset_growth_rate())
+            self.cash -= new_external_asset - self.external_asset
         print "--->", 'Code:', str(self.code), "updated_external_asset", "-", "external_asset", ":", \
             self.external_asset, "-", "new_external_asset", ":", new_external_asset#, "-" \
             #"cash", ":", self.cash, "-", new_external_asset - self.external_asset
-        self.cash -= new_external_asset - self.external_asset
         self.external_asset = new_external_asset
 
     def update_equity(self):
@@ -160,20 +167,21 @@ class Bank(Agent):
         self.sell_asset(other_banks, recover_rate)
 
         total_debt = self.deposit + self.total_borrowings()
-        total_cash = self.cash
+        if total_debt > 0:
+            total_cash = self.cash
 
-        self.cash -= total_cash * self.deposit / total_debt if total_debt > 0 else 0
-        self.deposit = 0
+            self.cash -= total_cash * self.deposit / total_debt if total_debt > 0 else 0
+            self.deposit = 0
 
-        for bank in banks:
-            if self.borrowings[bank.code] > 0:
-                repay = total_cash * self.borrowings[bank.code] / total_debt
-                self.pay(bank, repay)
-                self.borrowings[bank.code] = 0
-                bank.equity -= self.borrowings[bank.code] - repay
-                self.scheduled_repayment_amount[bank.code] = []
-                bank.receive(self, repay)
-                bank.lendings[self.code] = 0
+            for bank in banks:
+                if self.borrowings[bank.code] > 0:
+                    repay = total_cash * self.borrowings[bank.code] / total_debt
+                    self.pay(bank, repay)
+                    self.borrowings[bank.code] = 0
+                    bank.equity -= self.borrowings[bank.code] - repay
+                    self.scheduled_repayment_amount[bank.code] = []
+                    bank.receive(self, repay)
+                    bank.lendings[self.code] = 0
 
         print "--->", 'Code:', str(self.code), "bankrupted", "-", "cash", ":", self.cash
 
@@ -287,7 +295,7 @@ class Bank(Agent):
 
     ### Bankrupting process Function
     def recover_rate(self):
-        return np.random.uniform(self.recover_rate_params["min"], self.recover_rate_params["max"]) - SHOCK_RATE
+        return np.random.uniform(self.recover_rate_params["min"], self.recover_rate_params["max"])
 
     def sell_external_asset(self):
         cash = self.external_asset
@@ -421,8 +429,14 @@ class Bank(Agent):
     def equity_growth_rate(self):
         return np.random.normal(self.growth_rate["equity"]["mean"], self.growth_rate["equity"]["var"])
 
-
     def round_scheduled_repayment_amount(self):
         return {bank_code: [round(_, 5) \
                             for _ in self.scheduled_repayment_amount[bank_code]]\
                 for bank_code in self.scheduled_repayment_amount}
+
+    def set_shock(self, be_shocked=True):
+        self.is_shocked = be_shocked
+
+    def get_shock_rate(self):
+        self.is_shocked = False
+        return 0.5
