@@ -52,18 +52,21 @@ class CreditContagionModel(Model):
         self.stable_count_limit = stable_count_limit
         self.test_case = test_case
 
-    def step(self, shock=False):
-        stages = [1, 2, 3, 4]
-        for stage in stages:
-            self.schedule.step(stage, cycle_stage=stages.__len__())
+    def step(self, i_step, shock=False):
         if shock:
             self.shocked_bank(self.shocked_bank_number)
         self.data_collector.collect(self)
+        self.export_interbank_matrix(i_step)
+
+        stages = [1, 2, 3, 4]
+        for stage in stages:
+            self.schedule.step(stage, cycle_stage=stages.__len__())
+
         if self.verbose:
             print([self.schedule.time,
                    self.schedule.get_breed_count(Bank)])
 
-    def run_model(self, limit_step=10, stable_count_limit=10):
+    def run_model(self, limit_step=1, stable_count_limit=10):
         self.stable_count_limit = self.stable_count_limit or stable_count_limit
         if self.verbose:
             print('Project Name: ' + self.name)
@@ -80,11 +83,11 @@ class CreditContagionModel(Model):
             else:
                 stable_count += 1
 
-            step, i = (step + 1, i) if step < limit_step else (step, i + 1)
-            if step == limit_step - 1:
-                self.step(True)
+            step, i = (step + 1, i) if step <= limit_step else (step, i + 1)
+            if step == limit_step:
+                self.step(step + i, True)
             else:
-                self.step()
+                self.step(step + i)
 
     def create_data_collector(self):
         model_reporters = {
@@ -135,6 +138,13 @@ class CreditContagionModel(Model):
                 for i in range(0, self.data_collector.model_vars[keys[0]].__len__()):
                     values = [self.data_collector.model_vars[key][i] for key in keys]
                     spamwriter.writerow(values)
+
+    def export_interbank_matrix(self, step):
+        interbank_matrix = self.schedule.interbank_matrix()
+        with open(self.build_file_path('interbank_matrix_' + str(step)), 'wb') as csvfile:
+            spamwriter = csv.writer(csvfile, delimiter=',')
+            for interbank_row in interbank_matrix:
+                spamwriter.writerow(interbank_row)
 
     def build_file_path(self, report_type):
         file_path = 'statistic_reports/' + self.shock_type + '/' + str(self.test_case) + '/' + report_type + '.csv'

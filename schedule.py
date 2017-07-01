@@ -4,6 +4,7 @@ from collections import defaultdict
 from mesa.time import RandomActivation
 from agents.bank import Bank
 from agents.bankrupting_processor import BankruptingProcessor
+import operator
 
 class RandomActivationByBreed(RandomActivation):
     '''
@@ -108,3 +109,11 @@ class RandomActivationByBreed(RandomActivation):
 
     def get_run_time(self):
         return self.run_time
+
+    def interbank_matrix(self):
+        banks = self.agents_by_breed[Bank]
+        banks = sorted(banks, key=operator.attrgetter('code'))
+        mtx = [[""] + [bank.code for bank in banks]]
+        for bank in banks:
+            mtx += [[bank.code] + [bank.borrowings.get(_.code, 0) for _ in banks]]
+        return mtx
