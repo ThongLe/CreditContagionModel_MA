@@ -7,11 +7,8 @@ from data.contanst import *
 # I   : indicator
 # Sij : size_score of Bank i with Bank j
 def size_score(Aj, A, I):
-    try:
-        Sij = math.log(Aj) - np.dot(np.log(A), I) / sum(I)
-        return Sij
-    except Exception:
-        return 0
+    Sij = math.log(Aj) - (np.dot(np.log(A), I) / sum(I) if sum(I) != 0 else 0)
+    return Sij
 
 # pSij :
 # Sij  :

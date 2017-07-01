@@ -400,9 +400,6 @@ class Bank(Agent):
                 bank_assets.append(total_asset)
                 indicators.append(self.relation_indicators[bank.code])
         tmp = {bank: fl.size_score(bank.total_asset(), bank_assets, indicators) for bank in live_banks}
-        # tmp = {}
-        # for bank in live_banks:
-        #     tmp[bank] = fl.size_score(bank.total_asset(), bank_assets, indicators)
         self.size_score = {}
         if len(live_banks) > 0:
             max_score = max(np.abs(tmp.values()))
