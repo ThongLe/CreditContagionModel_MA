@@ -39,10 +39,6 @@ class CreditContagionModel(Model):
             params[i]["bankrupting_processor"] = bankrupting_processor
             agent = Bank(params[i])
             agents.append(agent)
-
-        for agent in agents:
-            other_agents = agent.other_agents(agents)
-            agent.init_scores(other_agents)
             self.schedule.add(agent)
 
         bankrupting_processor.set_context({"banks": agents})
