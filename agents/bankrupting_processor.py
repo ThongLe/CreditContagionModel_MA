@@ -17,12 +17,18 @@ class BankruptingProcessor(Agent):
         self.lendings = {}
         self.bankrupted = None
 
+        self.bankrupted_count = 0
+        self.bankrupted_index = {}
         self.is_shocked = False
+        self.bankrupted_asset = 0
+        self.bankrupted_equity = 0
 
     def set_context(self, context):
         self.context = context
 
     def add_bank(self, bank):
+        self.bankrupted_count += 1
+        bank.set_bankrupted_index(self.bankrupted_count)
         self.bankrupted_bank.append(bank)
 
     def processing(self):

@@ -8,7 +8,7 @@ from mesa.datacollection import DataCollector
 from agents.bank import Bank
 from agents.bankrupting_processor import BankruptingProcessor
 
-from data.banks_1 import params, lending_borrowing_matrix
+from data.banks_1 import params, lending_borrowing_matrix_05
 from schedule import RandomActivationByBreed
 
 import csv
@@ -34,8 +34,8 @@ class CreditContagionModel(Model):
         self.shocked_bank_number = shocked_bank_number
         agents = []
         for i in range(self.initial_bank):
-            params[i]["lendings"] = lending_borrowing_matrix[params[i]["code"]]
-            params[i]["borrowings"] = { bank: lending_borrowing_matrix[bank][params[i]["code"]] for bank in lending_borrowing_matrix }
+            params[i]["lendings"] = lending_borrowing_matrix_05[params[i]["code"]]
+            params[i]["borrowings"] = { bank: lending_borrowing_matrix_05[bank][params[i]["code"]] for bank in lending_borrowing_matrix_05 }
             params[i]["bankrupting_processor"] = bankrupting_processor
             agent = Bank(params[i])
             agents.append(agent)
@@ -51,7 +51,10 @@ class CreditContagionModel(Model):
     def step(self, i_step, shock=False):
         if shock:
             self.shocked_bank(self.shocked_bank_number)
-        self.data_collector.collect(self)
+            self.data_collector.collect(self)
+            self.unmark_shock_bank()
+        else:
+            self.data_collector.collect(self)
         self.export_interbank_matrix(i_step)
 
         stages = [1, 2, 3, 4]
@@ -95,18 +98,23 @@ class CreditContagionModel(Model):
             "Total_Equity": lambda m: m.schedule.total_equity(),
             "Number_Of_Live_Banks": lambda m: m.schedule.number_live_bank(),
             "Number_Of_Bankrupted_Banks": lambda m: m.schedule.number_bankrupted_bank(),
-            "Number_Of_Affected_Banks": lambda m: m.schedule.number_affected_bank()
+            "Number_Of_Affected_Banks": lambda m: m.schedule.number_affected_bank(),
+            "Total_Bankrupted_Asset": lambda m: m.schedule.total_bankrupted_asset(),
+            "Total_Bankrupted_Equity": lambda m: m.schedule.total_bankrupted_equity()
         }
         agent_reporters = {
             "cash": lambda bank: round(bank.cash, 5),
             "equity": lambda bank: round(bank.equity, 5),
             "deposit": lambda bank: round(bank.deposit, 5),
-            "external_asset": lambda bank: str(round(bank.external_asset, 5)) + ('(shocked)' if bank.is_shocked else ""),
+            "external_asset": lambda bank: str(round(bank.external_asset, 5)) + ('(shocked ' + str(bank.bankrupted_index) + ')' if bank.is_shocked else ""),
             "scheduled_repayment_amount": lambda bank: copy.deepcopy(bank.round_scheduled_repayment_amount()),
             "lendings": lambda bank: copy.deepcopy({_: round(bank.lendings[_], 5) for _ in bank.lendings}),
             "borrowings": lambda bank: copy.deepcopy({_: round(bank.lendings[_], 5) for _ in bank.borrowings}),
-            "is_bankrupted": lambda bank: bank.bankrupted
+            "is_bankrupted": lambda bank: bank.bankrupted,
+            "bankrupted_asset": lambda bank: bank.bankrupted_asset,
+            "bankrupted_equity": lambda bank: bank.bankrupted_equity,
         }
+
         return DataCollector(model_reporters, agent_reporters)
 
     def export_report(self):
@@ -149,11 +157,27 @@ class CreditContagionModel(Model):
             os.makedirs(directory)
         return file_path
 
+    def unmark_shock_bank(self):
+        banks = self.schedule.agents_by_breed[Bank]
+        for bank in banks:
+            bank.set_shock(False)
+
     def shocked_bank(self, number_of_banks):
         shock_count = 0
         banks = self.schedule.agents_by_breed[Bank]
         while shock_count < number_of_banks:
             bank_index = random.randint(0, self.initial_bank - 1)
-            if not banks[bank_index].is_bankrupted():
-                shock_count += 1
-                banks[bank_index].set_shock()
+            while banks[bank_index].is_shocked:
+                bank_index = random.randint(0, self.initial_bank - 1)
+            shock_count += 1
+            banks[bank_index].set_shock()
+            shocked_loss = banks[bank_index].external_asset * banks[bank_index].get_shock_rate()
+            banks[bank_index].external_asset -= shocked_loss
+            banks[bank_index].bankrupted_asset += shocked_loss
+            if banks[bank_index].is_bankrupted():
+                banks[bank_index].bankrupted_equity += banks[bank_index].equity
+                banks[bank_index].equity = 0
+            else:
+                banks[bank_index].bankrupted_equity += shocked_loss
+                banks[bank_index].equity -= shocked_loss
+

@@ -117,3 +117,11 @@ class RandomActivationByBreed(RandomActivation):
         for bank in banks:
             mtx += [[bank.code] + [bank.borrowings.get(_.code, 0) for _ in banks]]
         return mtx
+
+    def total_bankrupted_asset(self):
+        banks = self.agents_by_breed[Bank]
+        return sum([bank.bankrupted_asset for bank in banks])
+
+    def total_bankrupted_equity(self):
+        banks = self.agents_by_breed[Bank]
+        return sum([bank.bankrupted_equity for bank in banks])

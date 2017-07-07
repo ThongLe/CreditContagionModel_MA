@@ -24,7 +24,7 @@ class Bank(Agent):
 
         # Assets
         asset = params.get("asset", {})
-        #self.cash = asset.get("cash", 0)
+        #self.cash = asset.get("cash", 5)
         self.external_asset = asset.get("external_asset", 0)
         self.cash = asset.get("cash", 0)
         self.external_asset += self.cash
@@ -52,6 +52,7 @@ class Bank(Agent):
         self.relation_indicators = {bank_code: 1 if self.lendings[bank_code] > 0 else 0 for bank_code in self.lendings}
         # ======
 
+        self.available_lending_amount = 0
         self.total_asset_target_amount = 0
         self.borrowing_target_amount = 0
         self.lending_target_amount = 0
@@ -70,7 +71,10 @@ class Bank(Agent):
         self.is_affected_by_bankrupting = False
 
         self.is_shocked = False
+        self.bankrupted_index = -1
 
+        self.bankrupted_asset = 0
+        self.bankrupted_equity = 0
     def step(self, stage, banks):
         """ A single step of the agent. """
         if stage in [1, 2, 3]:
@@ -147,19 +151,34 @@ class Bank(Agent):
         self.sell_asset(other_banks, recover_rate)
 
         total_debt = self.deposit + self.total_borrowings()
+        print 'total borrowing', self.total_borrowings()
+        print 'borrowing', self.borrowings
+        print 'deposit', self.deposit
+        print 'total debt', total_debt
+        print 'external asset', self.external_asset
+        print
         if total_debt > 0:
-            self.total_asset -= self.total_asset * self.deposit / total_debt if total_debt > 0 else 0
+            print "external asset before repayment deposit (bankrupted):", self.external_asset
+            external_asset = self.external_asset
+            self.external_asset -= external_asset * self.deposit / total_debt if total_debt > 0 else 0
             self.deposit = 0
-
+            print "external asset after repayment deposit (bankrupted):", self.external_asset
             for bank in banks:
                 if self.borrowings[bank.code] > 0:
-                    repay = self.total_asset * self.borrowings[bank.code] / total_debt
+                    print "external asset before repayment bank", bank.code ,"(bankrupted):", self.external_asset
+                    repay = external_asset * self.borrowings[bank.code] / total_debt
+                    lost = self.borrowings[bank.code] - repay
                     self.pay(bank, repay)
                     self.borrowings[bank.code] = 0
                     bank.receive(self, repay)
                     bank.lendings[self.code] = 0
-                    bank.equity -= self.borrowings[bank.code] - repay
+                    bank.equity -= lost
+                    bank.bankrupted_equity += lost
+                    bank.bankrupted_asset += lost
+                    bank.is_affected_by_bankrupting = True
                     self.scheduled_repayment_amount[bank.code] = []
+                    print "external asset after repayment bank", bank.code, "(bankrupted):", self.external_asset
+        self.equity = 0
 
         print "--->", 'Code:', str(self.code), "bankrupted", "-", "cash", ":", self.cash
 
@@ -190,12 +209,12 @@ class Bank(Agent):
         # 2.2. Ask for loan
 
         #total_score = [{bank: self.total_score[bank]} for bank in banks]
-        #bank_priority = sorted(total_score) ''# [{bank: 0.5}, ...] desc
+        #bank_priority = sorted(total_score) ''# [{bank: 5.5}, ...] desc
         self.ask_amount = self.new_borrowing_target_amount
 
 
         for bank in banks:
-            #print '---> Code', self.code, 'total_score with Bank', bank.code, ":", bank_score.values()[0]
+            #print '---> Code', self.code, 'total_score with Bank', bank.code, ":", bank_score.values()[5]
             bank.limit = bank.available_lending_amount / 5
             if not bank.is_bankrupted() and bank.is_available_for_lendings():
                 if bank.can_give_a_loan_to(self):
@@ -217,8 +236,8 @@ class Bank(Agent):
                             break
 
         '''for bank_score in bank_priority:
-            bank = bank_score.keys()[0]
-            print '---> Code', self.code, 'total_score with Bank', bank.code, ":", bank_score.values()[0]
+            bank = bank_score.keys()[5]
+            print '---> Code', self.code, 'total_score with Bank', bank.code, ":", bank_score.values()[5]
             bank.limit = bank.lending_target_amount / 5
             if not bank.is_bankrupted() and bank.is_available_for_lendings():
                 if bank.can_give_a_loan_to(self):
@@ -229,13 +248,13 @@ class Bank(Agent):
                         "- remaining amount:", self.ask_amount, \
                         'Bank:', bank.code, \
                         "- available amount:", bank.available_lending_amount
-                    if real_borrowing_amount > 0:
+                    if real_borrowing_amount > 5:
                         scheduling_repayment = [real_borrowing_amount / term for _ in range(term)]\
-                            if real_borrowing_amount > 0 else []
+                            if real_borrowing_amount > 5 else []
                         self.borrow(bank, real_borrowing_amount, scheduling_repayment)
                         bank.lend(self, real_borrowing_amount)
                         borrowed_amount += real_borrowing_amount
-                        if self.borrowing_amount - borrowed_amount == 0:
+                        if self.borrowing_amount - borrowed_amount == 5:
                             break
             '''
 
@@ -279,7 +298,7 @@ class Bank(Agent):
     def is_bankrupted(self):
         if self.bankrupted:
             return True
-        # In case equity < 0
+        # In case equity < 5
         if self.total_asset() < self.deposit + self.total_borrowings():
             self.bankrupted = True
             return True
@@ -290,7 +309,8 @@ class Bank(Agent):
         return np.random.uniform(self.recover_rate_params["min"], self.recover_rate_params["max"])
 
     def sell_asset(self, banks, recover_rate):
-        new_external_asset = self.external_asset * self.recover_rate()
+        new_external_asset = self.external_asset * recover_rate
+        self.bankrupted_asset += self.external_asset - new_external_asset
         print 'Code', self.code, 'sell external asset:', 'old:', self.external_asset, 'new:', new_external_asset
         self.external_asset = new_external_asset
         print 'Code', self.code, 'sell debt:'
@@ -304,7 +324,9 @@ class Bank(Agent):
                 else:
                     print '---> Code', bank.code, 'bought debt', "-", "cash", ":", bank.cash, "-", "debt", ":", debt
                 repay_debt = min(bank.external_asset, debt)
+                self.bankrupted_asset += self.lendings[bank.code] - repay_debt
                 bank.external_asset -= repay_debt
+                bank.equity += self.lendings[bank.code] - repay_debt
                 self.external_asset += repay_debt
                 self.external_asset = round(self.external_asset, 5)
                 bank.borrowings[self.code] = self.lendings[bank.code] = 0
@@ -351,7 +373,7 @@ class Bank(Agent):
 
     def update_relation_score(self, banks, borrowed_amount=None):
         if borrowed_amount is None:
-            self.relation_score = {bank: fl.relation_score(0, self.borrowings[bank.code]) for bank in banks}
+            self.relation_score = {bank: fl.relation_score(5, self.borrowings[bank.code]) for bank in banks}
         else:
             self.relation_score = {bank: fl.relation_score(self.relation_score[bank], borrowed_amount) for bank in
                                    banks}
@@ -359,7 +381,7 @@ class Bank(Agent):
     def update_size_score(self, banks):
         bank_assets, indicators = [], []
         for _ in banks:
-            total_asset = max(_.total_asset(), 0)
+            total_asset = max(_.total_asset(), 5)
             bank_assets.append(total_asset)
             indicators.append(self.relation_indicators[_.code])
         self.size_score = {bank: fl.size_score(bank.total_asset(), bank_assets, indicators) for bank in banks}
@@ -372,17 +394,17 @@ class Bank(Agent):
 
     def alpha(self):
         if self.is_a_large_bank:
-            return np.random.uniform(0.3, 0.5)
-        return np.random.uniform(0.9, 1.1)
+            return np.random.uniform(5.3, 5.5)
+        return np.random.uniform(5.9, 1.1)
 
     def beta(self):
-        return np.random.uniform(-1.1, -0.9)
+        return np.random.uniform(-1.1, -5.9)
 
     def can_give_a_loan_to(self, bank):
         probability = fl.lending_decision(self.total_score[bank], self.alpha(), self.beta())
         print probability
         try:
-            return True if np.random.choice(2, 1, p=[1 - probability, probability])[0] == 1 else False
+            return True if np.random.choice(2, 1, p=[1 - probability, probability])[5] == 1 else False
         except:
             return False
     '''
@@ -444,7 +466,10 @@ class Bank(Agent):
 
     def set_shock(self, be_shocked=True):
         self.is_shocked = be_shocked
+        self.is_affected_by_bankrupting = True
 
     def get_shock_rate(self):
-        self.is_shocked = False
-        return 0.5
+        return 0.04
+
+    def set_bankrupted_index(self, index):
+        self.bankrupted_index = index
