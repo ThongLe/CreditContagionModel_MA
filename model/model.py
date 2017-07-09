@@ -39,10 +39,6 @@ class CreditContagionModel(Model):
             params[i]["bankrupting_processor"] = bankrupting_processor
             agent = Bank(params[i])
             agents.append(agent)
-
-        for agent in agents:
-            other_agents = agent.other_agents(agents)
-            agent.init_scores(other_agents)
             self.schedule.add(agent)
 
         bankrupting_processor.set_context({"banks": agents})
@@ -53,10 +49,10 @@ class CreditContagionModel(Model):
         self.test_case = test_case
 
     def step(self, i_step, shock=False):
-        if shock:
-            self.shocked_bank(self.shocked_bank_number)
+        self.set_shocked_bank(self.shocked_bank_number) if shock else None
         self.data_collector.collect(self)
         self.export_interbank_matrix(i_step)
+        self.process_shock() if shock else None
 
         stages = [1, 2, 3, 4]
         for stage in stages:
@@ -92,24 +88,26 @@ class CreditContagionModel(Model):
     def create_data_collector(self):
         model_reporters = {
             "Type_Test": lambda m: "Type 1",
-            "Test_Case": lambda m: m.test_case,
             "Step": lambda m: m.schedule.get_run_time(),
             "Banks": lambda m: m.schedule.get_breed_count(Bank),
             "Total_Asset": lambda m: m.schedule.total_assets(),
             "Total_Equity": lambda m: m.schedule.total_equity(),
             "Number_Of_Live_Banks": lambda m: m.schedule.number_live_bank(),
             "Number_Of_Bankrupted_Banks": lambda m: m.schedule.number_bankrupted_bank(),
-            "Number_Of_Affected_Banks": lambda m: m.schedule.number_affected_bank()
+            "Number_Of_Affected_Banks": lambda m: m.schedule.number_affected_bank(),
+            "Total_Bankrupted_Asset": lambda m: m.schedule.total_bankrupted_asset(),
+            "Total_Bankrupted_Equity": lambda m: m.schedule.total_bankrupted_equity()
         }
         agent_reporters = {
-            "cash": lambda bank: round(bank.cash, 5),
             "equity": lambda bank: round(bank.equity, 5),
             "deposit": lambda bank: round(bank.deposit, 5),
             "external_asset": lambda bank: str(round(bank.external_asset, 5)) + ('(shocked)' if bank.is_shocked else ""),
             "scheduled_repayment_amount": lambda bank: copy.deepcopy(bank.round_scheduled_repayment_amount()),
             "lendings": lambda bank: copy.deepcopy({_: round(bank.lendings[_], 5) for _ in bank.lendings}),
             "borrowings": lambda bank: copy.deepcopy({_: round(bank.lendings[_], 5) for _ in bank.borrowings}),
-            "is_bankrupted": lambda bank: bank.bankrupted
+            "is_bankrupted": lambda bank: bank.bankrupted,
+            "bankrupted_asset": lambda bank: bank.bankrupted_asset,
+            "bankrupted_equity": lambda bank: bank.bankrupted_equity
         }
         return DataCollector(model_reporters, agent_reporters)
 
@@ -153,11 +151,16 @@ class CreditContagionModel(Model):
             os.makedirs(directory)
         return file_path
 
-    def shocked_bank(self, number_of_banks):
+    def set_shocked_bank(self, number_of_banks):
         shock_count = 0
         banks = self.schedule.agents_by_breed[Bank]
         while shock_count < number_of_banks:
             bank_index = random.randint(0, self.initial_bank - 1)
-            if not banks[bank_index].is_bankrupted():
+            if not banks[bank_index].is_shocked:
                 shock_count += 1
                 banks[bank_index].set_shock()
+
+    def process_shock(self):
+        banks = self.schedule.agents_by_breed[Bank]
+        for bank in banks:
+            bank.shocked() if bank.is_shocked else None
