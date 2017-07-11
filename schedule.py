@@ -71,7 +71,7 @@ class RandomActivationByBreed(RandomActivation):
         for bank in banks:
             if not bank.is_bankrupted():
                 bank.step(stage, bank.other_agents(banks))
-            elif not bank.is_bankrupted:
+            elif not bank.bankrupted:
                 bankrupting_processor.add_bank(bank)
 
     def step_bankrupting(self):

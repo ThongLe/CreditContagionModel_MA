@@ -23,7 +23,7 @@ class Bank(Agent):
 
         # Assets
         asset = params.get("asset", {})
-        self.external_asset = asset.get("external_asset", 0)
+        self.external_asset = asset.get("external_asset", 0) + asset.get("cash", 0)
         # self.total_lendings() == asset["total"] - self.external_asset
         lendings = params.get("lendings", {})
         self.lendings = {code: lendings[code] for code in lendings if code != self.code}
@@ -162,7 +162,7 @@ class Bank(Agent):
             self.deposit = 0
 
             for bank in banks:
-                if self.borrowings[bank.code] > 0:
+                if not bank.bankrupted and self.borrowings[bank.code] > 0:
                     print "external asset before repayment bank", bank.code, "(bankrupted):", self.external_asset
                     repay = external_asset * self.borrowings[bank.code] / total_debt
                     loss_amount = self.borrowings[bank.code] - repay
@@ -267,7 +267,7 @@ class Bank(Agent):
         self.external_asset = new_external_asset
         print 'Code', self.code, 'sell debt:'
         for bank in banks:
-            if not bank.is_bankrupted() and self.lendings[bank.code] > 0:
+            if not bank.bankrupted and self.lendings[bank.code] > 0:
                 debt = recover_rate * self.lendings[bank.code]
 
                 print '---> Code', bank.code, 'bought debt', "-", \
