@@ -158,13 +158,15 @@ class Bank(Agent):
         if total_debt > 0:
             print "external asset before repayment deposit (bankrupted):", self.external_asset
             external_asset = self.external_asset
-            self.external_asset -= external_asset * self.deposit / total_debt if total_debt > 0 else 0
+            deposit_repay = min([external_asset * self.deposit / total_debt, self.deposit])
+            self.external_asset -= deposit_repay
+            self.bankrupted_asset += self.deposit - deposit_repay
             self.deposit = 0
 
             for bank in banks:
                 if not bank.bankrupted and self.borrowings[bank.code] > 0:
                     print "external asset before repayment bank", bank.code, "(bankrupted):", self.external_asset
-                    repay = external_asset * self.borrowings[bank.code] / total_debt
+                    repay = min([external_asset * self.borrowings[bank.code] / total_debt, self.borrowings[bank.code]])
                     loss_amount = self.borrowings[bank.code] - repay
 
                     self.pay(bank, repay)
@@ -263,26 +265,30 @@ class Bank(Agent):
 
     def sell_asset(self, banks, recover_rate):
         new_external_asset = self.external_asset * recover_rate
-        self.bankrupted_asset += self.external_asset - new_external_asset
+        loss_amount = self.external_asset - new_external_asset
+
+        self.bankrupted_asset += loss_amount
+        self.bankrupted_equity += min([loss_amount, self.equity])
+        self.equity -= min([loss_amount, self.equity])
+
         self.external_asset = new_external_asset
         print 'Code', self.code, 'sell debt:'
         for bank in banks:
-            if not bank.bankrupted and self.lendings[bank.code] > 0:
+            if self.lendings[bank.code] > 0:
                 debt = recover_rate * self.lendings[bank.code]
-
                 print '---> Code', bank.code, 'bought debt', "-", \
                     "external_asset", ":", bank.external_asset, "-", "debt", ":", debt
 
                 bank.is_affected_by_bankrupting = True
-
                 repay_debt = min(bank.external_asset, debt)
+
                 bank.pay(self, repay_debt)
                 self.receive(bank, repay_debt)
 
-                loss_amount = self.lendings[bank.code] - repay_debt
-                bank.equity += loss_amount
+                loss_amount = bank.borrowings[self.code] - repay_debt
+                if not bank.is_bankrupted():
+                    bank.equity += bank.equity + loss_amount
                 self.bankrupted_asset += loss_amount
-
                 bank.borrowings[self.code] = self.lendings[bank.code] = 0
                 bank.scheduled_repayment_amount[self.code] = []
 
