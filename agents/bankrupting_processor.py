@@ -21,6 +21,8 @@ class BankruptingProcessor(Agent):
         self.bankrupted_asset = 0
         self.bankrupted_equity = 0
 
+        self.bankrupted_count = 0
+
     def set_context(self, context):
         self.context = context
 
@@ -32,6 +34,8 @@ class BankruptingProcessor(Agent):
             bank = self.bankrupted_bank.pop()
             banks = bank.other_agents(self.context["banks"])
             bank.bankrupting(banks)
+            self.bankrupted_count += 1
+            bank.set_bankrupted_id(self.bankrupted_count)
 
     def round_scheduled_repayment_amount(self):
         return None

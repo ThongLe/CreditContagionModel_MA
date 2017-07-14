@@ -8,7 +8,7 @@ from mesa.datacollection import DataCollector
 from agents.bank import Bank
 from agents.bankrupting_processor import BankruptingProcessor
 
-from data.banks_1 import params, lending_borrowing_matrix
+from data.banks_1 import params, lending_borrowing_matrix_1
 from schedule import RandomActivationByBreed
 
 import csv
@@ -19,7 +19,8 @@ class CreditContagionModel(Model):
     initial_bank = 100
 
     ### To do
-    def __init__(self, shock_type='Type_1', shocked_bank_number=1, initial_bank=20, stable_count_limit=10, test_case=0):
+    def __init__(self, shock_type='Type_1', shocked_bank_number=1, initial_bank=20, stable_count_limit=10, \
+                 test_case=0, shock_rate=0):
         self.name = "Credit Contagion Model"
 
         # Set parameters
@@ -34,10 +35,10 @@ class CreditContagionModel(Model):
         self.shocked_bank_number = shocked_bank_number
         agents = []
         for i in range(self.initial_bank):
-            params[i]["lendings"] = lending_borrowing_matrix[params[i]["code"]]
-            params[i]["borrowings"] = { bank: lending_borrowing_matrix[bank][params[i]["code"]] for bank in lending_borrowing_matrix }
+            params[i]["lendings"] = lending_borrowing_matrix_1[params[i]["code"]]
+            params[i]["borrowings"] = { bank: lending_borrowing_matrix_1[bank][params[i]["code"]] for bank in lending_borrowing_matrix_1 }
             params[i]["bankrupting_processor"] = bankrupting_processor
-            agent = Bank(params[i])
+            agent = Bank(params[i], shock_rate)
             agents.append(agent)
             self.schedule.add(agent)
 
@@ -47,6 +48,7 @@ class CreditContagionModel(Model):
         self.shock_type = shock_type
         self.stable_count_limit = stable_count_limit
         self.test_case = test_case
+        self.shock_rate = shock_rate
 
     def step(self, i_step, shock=False):
         self.set_shocked_bank(self.shocked_bank_number) if shock else None
@@ -105,7 +107,7 @@ class CreditContagionModel(Model):
             "scheduled_repayment_amount": lambda bank: copy.deepcopy(bank.round_scheduled_repayment_amount()),
             "lendings": lambda bank: copy.deepcopy({_: round(bank.lendings[_], 5) for _ in bank.lendings}),
             "borrowings": lambda bank: copy.deepcopy({_: round(bank.lendings[_], 5) for _ in bank.borrowings}),
-            "is_bankrupted": lambda bank: bank.bankrupted,
+            "is_bankrupted": lambda bank: str(bank.bankrupted) + ('(' + str(bank.bankrupted_id) + ')') if bank.bankrupted else '',
             "bankrupted_asset": lambda bank: bank.bankrupted_asset,
             "bankrupted_equity": lambda bank: bank.bankrupted_equity
         }
@@ -145,7 +147,8 @@ class CreditContagionModel(Model):
                 spamwriter.writerow(interbank_row)
 
     def build_file_path(self, report_type):
-        file_path = 'statistic_reports/' + self.shock_type + '/' + str(self.test_case) + '/' + report_type + '.csv'
+        file_path = 'statistic_reports/' + self.shock_type + '/shock_rate_' + str(self.shock_rate) + '/' + \
+                    str(self.test_case) + '/' + report_type + '.csv'
         directory = os.path.dirname(file_path)
         if not os.path.exists(directory):
             os.makedirs(directory)

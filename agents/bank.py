@@ -6,7 +6,7 @@ import math
 from data.contanst import *
 
 class Bank(Agent):
-    def __init__(self, params):
+    def __init__(self, params, shock_rate):
         self.code = params.get("code", "")
         self.name = self.code
         self.unique_id = self.code
@@ -68,6 +68,10 @@ class Bank(Agent):
         self.bankrupted_equity = 0
         self.bankrupted_asset = 0
         self.available_lending_target_amount = 0
+
+        self.shock_rate = shock_rate
+
+        self.bankrupted_id = 0
 
     def step(self, stage, banks):
         """ A single step of the agent. """
@@ -172,8 +176,8 @@ class Bank(Agent):
                     self.pay(bank, repay)
                     bank.receive(self, repay)
 
-                    bank.equity -= loss_amount
-                    bank.bankrupted_equity += loss_amount
+                    bank.bankrupted_equity += min(bank.equity, loss_amount)
+                    bank.equity -= min(bank.equity, loss_amount)
                     bank.bankrupted_asset += loss_amount
 
                     bank.is_affected_by_bankrupting = True
@@ -287,7 +291,7 @@ class Bank(Agent):
 
                 loss_amount = bank.borrowings[self.code] - repay_debt
                 if not bank.is_bankrupted():
-                    bank.equity += bank.equity + loss_amount
+                    bank.equity += loss_amount
                 self.bankrupted_asset += loss_amount
                 bank.borrowings[self.code] = self.lendings[bank.code] = 0
                 bank.scheduled_repayment_amount[self.code] = []
@@ -379,7 +383,7 @@ class Bank(Agent):
         self.is_shocked = be_shocked
 
     def get_shock_rate(self):
-        return 0.2
+        return self.shock_rate
 
     def shocked(self):
         self.is_shocked = False
@@ -388,3 +392,6 @@ class Bank(Agent):
         self.bankrupted_asset += loss_amount
         self.bankrupted_equity += min(self.equity, loss_amount)
         self.equity = max(self.equity - loss_amount, 0)
+
+    def set_bankrupted_id(self, id):
+        self.bankrupted_id = id
